@@ -1,6 +1,7 @@
 import { Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WorldRoom } from './rooms/WorldRoom.js';
 import { ArenaRoom } from './rooms/ArenaRoom.js';
@@ -9,6 +10,7 @@ import { DungeonRoom } from './rooms/DungeonRoom.js';
 const app = express();
 const port = Number(process.env.PORT) || 2567;
 
+app.use(cors());
 app.use(express.json());
 
 // Health check
