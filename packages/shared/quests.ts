@@ -1,0 +1,73 @@
+export const QUEST_DEFINITIONS = [
+  // Onboarding
+  {
+    id: 'first_blood',
+    title: 'First Blood',
+    description: 'Connect your Stripe account',
+    icon: '⚔️',
+    type: 'onboarding',
+    target: 1,
+    rewardXp: 500,
+    rewardItemId: 'iron_sword',
+    rewardGold: 100,
+  },
+  {
+    id: 'the_audience',
+    title: 'The Audience',
+    description: 'Reach 1,000 X followers',
+    icon: '📣',
+    type: 'followers',
+    target: 1000,
+    rewardXp: 750,
+    rewardItemId: 'leather_armor',
+    rewardGold: 150,
+  },
+  // Monthly growth quests (auto-assigned each month)
+  {
+    id: 'momentum_mrr',
+    title: 'Momentum',
+    description: 'Add $500 in new MRR this month',
+    icon: '📈',
+    type: 'mrr_growth',
+    target: 50000, // cents
+    rewardXp: 1000,
+    rewardItemId: null,
+    rewardGold: 300,
+  },
+  {
+    id: 'content_machine',
+    title: 'Content Machine',
+    description: 'Post 20 times on X this month',
+    icon: '✍️',
+    type: 'x_posts',
+    target: 20,
+    rewardXp: 600,
+    rewardItemId: null,
+    rewardGold: 200,
+  },
+  {
+    id: 'the_network',
+    title: 'The Network',
+    description: 'Refer 3 creators to Midforge',
+    icon: '🤝',
+    type: 'referrals',
+    target: 3,
+    rewardXp: 1500,
+    rewardItemId: 'chainmail',
+    rewardGold: 500,
+  },
+  {
+    id: 'double_down',
+    title: 'Double Down',
+    description: '2x your MRR from last season',
+    icon: '🔥',
+    type: 'mrr_multiplier',
+    target: 2,
+    rewardXp: 5000,
+    rewardItemId: 'plate_armor',
+    rewardGold: 2000,
+    seasonTitle: 'The Doubler',
+  },
+] as const;
+
+export type QuestId = (typeof QUEST_DEFINITIONS)[number]['id'];

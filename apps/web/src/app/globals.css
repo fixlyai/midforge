@@ -1,0 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-forge-bg text-forge-wheat;
+    font-family: 'Press Start 2P', monospace;
+    image-rendering: pixelated;
+  }
+}
+
+@layer components {
+  .forge-panel {
+    @apply bg-forge-dark/90 border border-forge-amber/40 rounded-lg p-4;
+    box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.5);
+  }
+
+  .forge-btn {
+    @apply bg-forge-amber text-forge-bg font-pixel text-xs px-6 py-3
+           hover:brightness-110 active:brightness-90
+           transition-all duration-100;
+    box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.4);
+  }
+
+  .forge-btn:active {
+    box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.4);
+    transform: translate(2px, 2px);
+  }
+
+  .forge-btn-red {
+    @apply forge-btn bg-forge-red;
+  }
+
+  .forge-btn-green {
+    @apply forge-btn bg-forge-green;
+  }
+
+  .tier-villager { @apply text-forge-brown; }
+  .tier-apprentice { @apply text-forge-blue; }
+  .tier-merchant { @apply text-forge-purple; }
+  .tier-warrior { @apply text-forge-red; }
+  .tier-legend { @apply text-forge-amber; }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0a1e;
+}
+::-webkit-scrollbar-thumb {
+  background: #F39C12;
+  border-radius: 0;
+}
+
+/* Pixel art animation for landing page */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(243, 156, 18, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(243, 156, 18, 0.6); }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}

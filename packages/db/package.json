@@ -1,0 +1,24 @@
+{
+  "name": "@midforge/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./schema": "./schema.ts",
+    "./client": "./client.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "drizzle-orm": "^0.36.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.28.0",
+    "typescript": "^5.5.0"
+  }
+}

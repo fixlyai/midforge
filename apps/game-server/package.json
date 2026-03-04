@@ -1,0 +1,24 @@
+{
+  "name": "@midforge/game-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@colyseus/core": "^0.15.0",
+    "@colyseus/schema": "^2.0.0",
+    "@colyseus/ws-transport": "^0.15.0",
+    "express": "^4.21.0",
+    "@midforge/shared": "*"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
