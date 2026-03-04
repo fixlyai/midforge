@@ -4,7 +4,7 @@ import { desc } from 'drizzle-orm';
 import { TIERS, type TierKey } from '@midforge/shared/types';
 import Link from 'next/link';
 
-export const revalidate = 60; // revalidate every 60 seconds
+export const dynamic = 'force-dynamic';
 
 export default async function LeaderboardPage() {
   const topPlayers = await db

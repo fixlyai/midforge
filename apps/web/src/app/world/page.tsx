@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { GameCanvasWrapper } from '@/components/game/GameCanvasWrapper';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
 export default async function WorldPage() {
   const session = await auth();
   if (!session) redirect('/login');
