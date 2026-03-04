@@ -2,19 +2,18 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Copy root package files
+# Copy package manifests
 COPY package.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/game-server/package.json ./apps/game-server/
 
-# Install all dependencies
-RUN npm install --workspaces --include-workspace-root
+# Install ALL dependencies (including devDeps for tsx)
+RUN npm install --workspaces --include-workspace-root --ignore-scripts
 
-# Copy source
+# Copy source files
 COPY packages/shared/ ./packages/shared/
 COPY apps/game-server/ ./apps/game-server/
 COPY tsconfig.json ./
 
-# Build and start
 EXPOSE 2567
-CMD ["npx", "tsx", "apps/game-server/src/index.ts"]
+CMD ["node", "--import", "tsx", "apps/game-server/src/index.ts"]
