@@ -289,7 +289,9 @@ function ArenaBackground({ flash }: { flash: 'left' | 'right' | null }) {
   );
 }
 
-// ─── Arena Fight Scene ───
+// ─── Arena Fight Scene (3-action combat) ───
+type CombatAction = 'strike' | 'powerStrike' | 'block';
+
 function ArenaFightScene({
   result, playerName, playerTier = 'villager', onDone,
 }: {
@@ -314,11 +316,25 @@ function ArenaFightScene({
   const [playerEntered, setPlayerEntered] = useState(false);
   const [ghostEntered, setGhostEntered] = useState(false);
   const [vsVisible, setVsVisible] = useState(false);
+  const [powerCharge, setPowerCharge] = useState(0);
+  const [lastAction, setLastAction] = useState<CombatAction | null>(null);
+  const [ghostAction, setGhostAction] = useState<string | null>(null);
+  const [blocksUsed, setBlocksUsed] = useState(0);
   const busy = useRef(false);
+  const realCHp = useRef(maxHp);
+  const realDHp = useRef(maxHp);
 
   const ghostColor = TIER_COLORS[result.ghost.tier] || '#8B7355';
   const playerColor = TIER_COLORS[playerTier] || '#4A90D9';
   const isDead = (hp: number) => hp <= 0;
+  const powerReady = powerCharge >= 2;
+
+  // Ghost AI: block 20% when below 30% HP, power strike when 'charged'
+  const getGhostAction = useCallback((gHpPct: number, rnd: number): CombatAction => {
+    if (gHpPct < 0.3 && Math.random() < 0.2) return 'block';
+    if (rnd > 0 && rnd % 3 === 0) return 'powerStrike';
+    return 'strike';
+  }, []);
 
   // Intro sequence
   useEffect(() => {
@@ -329,42 +345,86 @@ function ArenaFightScene({
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
   }, []);
 
-  // Round execution
-  const executeRound = useCallback(() => {
+  // Round execution with action modifiers
+  const executeRound = useCallback((action: CombatAction) => {
     if (busy.current || !canAttack) return;
+    if (action === 'powerStrike' && !powerReady) return;
+
     const next = roundIdx + 1;
     if (next >= log.length) { setPhase('result'); return; }
     busy.current = true;
     setCanAttack(false);
     setRoundIdx(next);
-    const r = log[next];
+    setLastAction(action);
 
-    // Player attacks ghost
-    setHitLeft(true);
-    setFlashBg('right');
+    const r = log[next];
+    const gHpPct = realDHp.current / maxHp;
+    const gAction = getGhostAction(gHpPct, next);
+    setGhostAction(gAction);
+
+    // Apply action modifiers to base damage
+    let playerDmg = r.cDmg;
+    if (action === 'powerStrike') playerDmg = Math.round(r.cDmg * 1.5);
+    if (action === 'block') playerDmg = 0;
+    if (gAction === 'block') playerDmg = Math.round(playerDmg * 0.4);
+
+    let ghostDmg = r.dDmg;
+    if (gAction === 'powerStrike') ghostDmg = Math.round(r.dDmg * 1.5);
+    if (gAction === 'block') ghostDmg = 0;
+    if (action === 'block') ghostDmg = Math.round(ghostDmg * 0.4);
+
+    // Update charge counter
+    if (action === 'powerStrike') {
+      setPowerCharge(0);
+    } else {
+      setPowerCharge(prev => Math.min(prev + 1, 2));
+    }
+
+    if (action === 'block') setBlocksUsed(prev => prev + 1);
+
+    // Calculate real HP after modifiers
+    const newDHp = Math.max(0, realDHp.current - playerDmg);
+    const newCHp = newDHp > 0 ? Math.max(0, realCHp.current - ghostDmg) : realCHp.current;
+
+    // Player attacks ghost (unless blocking)
+    if (action !== 'block') {
+      setHitLeft(true);
+      setFlashBg('right');
+    }
+
     setTimeout(() => {
       setHitLeft(false);
-      setShakeRight(true);
-      setDmgRight(r.cDmg);
-      setDHp(Math.max(0, r.dHp));
+      if (playerDmg > 0) {
+        setShakeRight(true);
+        setDmgRight(playerDmg);
+      }
+      realDHp.current = newDHp;
+      setDHp(newDHp);
+
       setTimeout(() => {
         setShakeRight(false); setDmgRight(null); setFlashBg(null);
-        if (isDead(r.dHp)) {
+        if (isDead(newDHp)) {
           setTimeout(() => { setPhase('result'); busy.current = false; }, 600);
           return;
         }
         // Ghost retaliates
         setTimeout(() => {
-          setHitRight(true);
-          setFlashBg('left');
+          if (gAction !== 'block') {
+            setHitRight(true);
+            setFlashBg('left');
+          }
           setTimeout(() => {
             setHitRight(false);
-            setShakeLeft(true);
-            setDmgLeft(r.dDmg);
-            setCHp(Math.max(0, r.cHp));
+            if (ghostDmg > 0) {
+              setShakeLeft(true);
+              setDmgLeft(ghostDmg);
+            }
+            realCHp.current = newCHp;
+            setCHp(newCHp);
             setTimeout(() => {
               setShakeLeft(false); setDmgLeft(null); setFlashBg(null);
-              if (isDead(r.cHp)) {
+              setGhostAction(null);
+              if (isDead(newCHp)) {
                 setTimeout(() => { setPhase('result'); busy.current = false; }, 600);
               } else {
                 setCanAttack(true); busy.current = false;
@@ -373,18 +433,34 @@ function ArenaFightScene({
           }, 200);
         }, 400);
       }, 300);
-    }, 250);
-  }, [roundIdx, log, canAttack, maxHp]);
+    }, action === 'block' ? 100 : 250);
+  }, [roundIdx, log, canAttack, maxHp, powerReady, getGhostAction]);
 
-  // Keyboard + tap
+  // Keyboard shortcuts: 1=Strike, 2=Power Strike, 3=Block, Space=Strike
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.code === 'Space' || e.code === 'Enter') && phase === 'fight') { e.preventDefault(); executeRound(); }
+      if (phase === 'fight' && canAttack) {
+        if (e.code === 'Space' || e.code === 'Digit1') { e.preventDefault(); executeRound('strike'); }
+        if (e.code === 'Digit2' && powerReady) { e.preventDefault(); executeRound('powerStrike'); }
+        if (e.code === 'Digit3') { e.preventDefault(); executeRound('block'); }
+      }
       if ((e.code === 'Space' || e.code === 'Enter') && phase === 'result') { onDone(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [executeRound, phase, onDone]);
+  }, [executeRound, phase, onDone, canAttack, powerReady]);
+
+  const actionBtnStyle = (enabled: boolean, color: string, glowColor: string) => ({
+    fontFamily: '"Press Start 2P", monospace' as const, fontSize: 7,
+    padding: '8px 10px', flex: 1,
+    background: enabled ? `linear-gradient(180deg, ${color} 0%, ${color}CC 100%)` : '#2a1a4e',
+    color: enabled ? '#000' : '#ffffff30',
+    border: `2px solid ${enabled ? color : '#2a1a4e'}`,
+    borderRadius: 4, cursor: enabled ? 'pointer' : 'default',
+    animation: enabled ? `pulseGlow 1.2s infinite` : 'none',
+    transition: 'all 0.2s',
+    textShadow: enabled ? '0 1px 0 #00000040' : 'none',
+  });
 
   return (
     <>
@@ -398,9 +474,10 @@ function ArenaFightScene({
         @keyframes attackLunge { 0% { transform: translateX(0); } 40% { transform: translateX(20px); } 100% { transform: translateX(0); } }
         @keyframes attackLungeR { 0% { transform: scaleX(-1) translateX(0); } 40% { transform: scaleX(-1) translateX(20px); } 100% { transform: scaleX(-1) translateX(0); } }
         @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 8px #F39C1240; } 50% { box-shadow: 0 0 24px #F39C12; } }
+        @keyframes blockShimmer { 0% { opacity: 0.3; } 50% { opacity: 0.6; } 100% { opacity: 0.3; } }
       `}</style>
 
-      <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '2px solid #F39C1240', background: '#0d0a1e', minHeight: 260, marginBottom: 12 }}>
+      <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '2px solid #F39C1240', background: '#0d0a1e', minHeight: 280, marginBottom: 12 }}>
         <ArenaBackground flash={flashBg} />
 
         {/* VS Intro overlay */}
@@ -423,42 +500,64 @@ function ArenaFightScene({
             {/* Player */}
             <div style={{ position: 'relative', animation: playerEntered ? (hitLeft ? 'attackLunge 0.4s ease-in-out' : shakeLeft ? 'shakeX 0.4s ease-in-out' : 'none') : 'slideInLeft 0.4s ease-out forwards' }}>
               <PixelSprite color={playerColor} tier={playerTier} hit={hitLeft} dead={isDead(cHp)} />
-              {dmgLeft !== null && <DamageNumber damage={dmgLeft} x="left" />}
+              {dmgLeft !== null && <DamageNumber damage={dmgLeft} x="left" critical={lastAction === 'block'} />}
+              {lastAction === 'block' && !canAttack && (
+                <div style={{ position: 'absolute', inset: -4, border: '2px solid #4A90D9', borderRadius: 8, animation: 'blockShimmer 0.6s infinite', pointerEvents: 'none' }} />
+              )}
               <div style={{ textAlign: 'center', marginTop: 4, fontFamily: '"Press Start 2P", monospace', fontSize: 5, color: playerColor, textShadow: '1px 1px 0 #000' }}>{TIER_LABELS[playerTier] ?? 'VILLAGER'}</div>
             </div>
 
             {/* Center */}
             <div style={{ textAlign: 'center' }}>
               {phase === 'fight' && <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#ffffff40', marginBottom: 4 }}>{roundIdx < 0 ? 'READY' : `RND ${roundIdx + 1}`}</div>}
+              {ghostAction && <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 5, color: ghostAction === 'block' ? '#4A90D9' : ghostAction === 'powerStrike' ? '#E74C3C' : '#ffffff30', marginBottom: 2 }}>{ghostAction === 'block' ? 'BLOCKED' : ghostAction === 'powerStrike' ? 'POWER!' : ''}</div>}
               <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 5, color: '#ffffff20' }}>{'👻'} GHOST</div>
             </div>
 
             {/* Ghost */}
             <div style={{ position: 'relative', animation: ghostEntered ? (hitRight ? 'attackLungeR 0.4s ease-in-out' : shakeRight ? 'shakeX 0.4s ease-in-out' : 'none') : 'slideInRight 0.4s ease-out forwards' }}>
               <PixelSprite color={ghostColor} flipped tier={result.ghost.tier} hit={hitRight} dead={isDead(dHp)} />
-              {dmgRight !== null && <DamageNumber damage={dmgRight} x="right" />}
+              {dmgRight !== null && <DamageNumber damage={dmgRight} x="right" critical={lastAction === 'powerStrike'} />}
+              {ghostAction === 'block' && (
+                <div style={{ position: 'absolute', inset: -4, border: '2px solid #4A90D9', borderRadius: 8, animation: 'blockShimmer 0.6s infinite', pointerEvents: 'none' }} />
+              )}
               <div style={{ textAlign: 'center', marginTop: 4, fontFamily: '"Press Start 2P", monospace', fontSize: 5, color: ghostColor, textShadow: '1px 1px 0 #000' }}>{TIER_LABELS[result.ghost.tier] ?? 'VILLAGER'}</div>
             </div>
           </div>
 
-          {/* Attack button */}
+          {/* 3-Action combat buttons */}
           {phase === 'fight' && (
-            <div style={{ textAlign: 'center', paddingTop: 4 }}>
+            <div style={{ display: 'flex', gap: 6, paddingTop: 4 }}>
+              {/* STRIKE */}
               <button
-                onClick={executeRound}
+                onClick={() => executeRound('strike')}
                 disabled={!canAttack}
-                style={{
-                  fontFamily: '"Press Start 2P", monospace', fontSize: 9,
-                  padding: '10px 28px',
-                  background: canAttack ? 'linear-gradient(180deg, #F39C12 0%, #E67E22 100%)' : '#2a1a4e',
-                  color: canAttack ? '#000' : '#ffffff30',
-                  border: `2px solid ${canAttack ? '#F39C12' : '#2a1a4e'}`,
-                  borderRadius: 4, cursor: canAttack ? 'pointer' : 'default',
-                  animation: canAttack ? 'pulseGlow 1.2s infinite' : 'none',
-                  transition: 'all 0.2s',
-                }}
+                style={actionBtnStyle(canAttack, '#F39C12', '#F39C12')}
               >
-                {canAttack ? '⚔ ATTACK' : '...'}
+                ⚔ STRIKE
+                <div style={{ fontSize: 5, marginTop: 2, opacity: 0.6 }}>[1]</div>
+              </button>
+
+              {/* POWER STRIKE */}
+              <button
+                onClick={() => executeRound('powerStrike')}
+                disabled={!canAttack || !powerReady}
+                style={actionBtnStyle(canAttack && powerReady, '#E74C3C', '#E74C3C')}
+              >
+                {'💥'} POWER
+                <div style={{ fontSize: 5, marginTop: 2, opacity: 0.6 }}>
+                  {powerReady ? '[2]' : `⚡${powerCharge}/2`}
+                </div>
+              </button>
+
+              {/* BLOCK */}
+              <button
+                onClick={() => executeRound('block')}
+                disabled={!canAttack}
+                style={actionBtnStyle(canAttack, '#4A90D9', '#4A90D9')}
+              >
+                {'🛡'} BLOCK
+                <div style={{ fontSize: 5, marginTop: 2, opacity: 0.6 }}>[3]</div>
               </button>
             </div>
           )}
