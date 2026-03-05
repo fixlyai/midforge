@@ -38,6 +38,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
   const [cardPlayer, setCardPlayer] = useState<CardData | null>(null);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
+  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const handleShowCard = useCallback((data: CardData) => {
     setCardPlayer(data);
@@ -55,10 +56,23 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
 
       if (gameRef.current) return;
 
+      const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      // Dynamic import of rex plugin only on mobile
+      let rexPlugin: any = null;
+      if (mobile) {
+        try {
+          const mod = await import('phaser3-rex-plugins/plugins/virtualjoystick-plugin.js');
+          rexPlugin = mod.default || mod;
+        } catch (e) {
+          console.warn('Failed to load rex joystick plugin:', e);
+        }
+      }
+
       const game = new Phaser.Game({
         type: Phaser.AUTO,
-        width: 960,
-        height: 640,
+        width: mobile ? window.innerWidth : 960,
+        height: mobile ? window.innerHeight : 640,
         parent: containerRef.current!,
         pixelArt: true,
         antialias: false,
@@ -68,13 +82,29 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
           arcade: { gravity: { x: 0, y: 0 }, debug: false },
         },
         scene: [PreloadScene, WorldScene, UIScene],
+        plugins: rexPlugin ? {
+          global: [{ key: 'rexVirtualJoystick', plugin: rexPlugin, start: true }],
+        } : undefined,
         scale: {
-          mode: Phaser.Scale.FIT,
+          mode: mobile ? Phaser.Scale.RESIZE : Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
+        },
+        input: {
+          activePointers: mobile ? 2 : 1,
+        },
+        render: {
+          pixelArt: true,
+          antialias: false,
+          powerPreference: 'high-performance',
+        },
+        fps: {
+          target: mobile ? 30 : 60,
+          forceSetTimeOut: mobile,
         },
       });
 
       game.registry.set('playerData', playerData);
+      game.registry.set('isMobile', mobile);
 
       game.events.on('world_ready', () => {
         if (game.scene.isActive('UIScene') === false) {
@@ -107,11 +137,11 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
   const closePanel = () => setActivePanel(null);
 
   return (
-    <div className="relative w-full max-w-[960px]">
+    <div className={`relative ${isMobile ? 'w-screen h-screen' : 'w-full max-w-[960px]'}`}>
       <div
         ref={containerRef}
-        className="w-full aspect-[3/2] rounded-lg overflow-hidden border-2 border-forge-amber/40"
-        style={{ imageRendering: 'pixelated' }}
+        className={`overflow-hidden ${isMobile ? 'w-full h-full' : 'w-full aspect-[3/2] rounded-lg border-2 border-forge-amber/40'}`}
+        style={{ imageRendering: 'pixelated', touchAction: 'none' }}
       />
       {cardPlayer && (
         <PlayerCard player={cardPlayer} onClose={() => setCardPlayer(null)} />

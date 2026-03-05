@@ -101,6 +101,12 @@ export class WorldScene extends Phaser.Scene {
   // Map transition zones
   private transitionZones: { zone: Phaser.GameObjects.Zone; targetMap: string }[] = [];
 
+  // Mobile touch controls
+  private isMobile = false;
+  private joystick: any = null;
+  private joyKeys: any = null;
+  private mobileButtons: Phaser.GameObjects.GameObject[] = [];
+
   // Spawn points from map
   private spawnDefault = { x: 624, y: 736 };
   private spawnNewGame = { x: 624, y: 240 };
@@ -163,6 +169,13 @@ export class WorldScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys('W,S,A,D') as Record<string, Phaser.Input.Keyboard.Key>;
     this.interactKey = this.input.keyboard!.addKey('E');
+
+    // ── Mobile controls ───────────────────────────────────
+    this.isMobile = this.registry.get('isMobile') === true;
+    if (this.isMobile) {
+      this.cameras.main.setZoom(Math.min(cameraZoom, 2.5));
+      this.createMobileControls();
+    }
 
     // ── Player Name Label ───────────────────────────────
     const username = playerData?.xUsername ?? 'player';
@@ -300,6 +313,28 @@ export class WorldScene extends Phaser.Scene {
           color: '#F39C12',
         }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
         this.npcLabels.set(obj.name, label);
+
+        // Mobile: tap NPC to interact (if close enough)
+        sprite.setInteractive();
+        sprite.on('pointerdown', () => {
+          if (!this.player) return;
+          const dist = Phaser.Math.Distance.Between(
+            this.player.x, this.player.y, sprite.x, sprite.y
+          );
+          if (dist < NPC_INTERACT_DISTANCE) {
+            this.playInteractSound();
+            this.game.events.emit(eventName, { npcId: obj.name, dialogue });
+          } else {
+            // Show floating "Get closer" hint
+            const hint = this.add.text(sprite.x, sprite.y - 20, 'Get closer', {
+              fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#F39C12',
+            }).setOrigin(0.5).setDepth(200);
+            this.tweens.add({
+              targets: hint, y: hint.y - 15, alpha: 0,
+              duration: 1200, onComplete: () => hint.destroy(),
+            });
+          }
+        });
       }
 
       // Store quest giver position for glowing path
@@ -873,10 +908,10 @@ export class WorldScene extends Phaser.Scene {
     let moving = false;
     let direction = this.lastDirection;
 
-    const left = this.cursors.left.isDown || this.wasd.A.isDown;
-    const right = this.cursors.right.isDown || this.wasd.D.isDown;
-    const up = this.cursors.up.isDown || this.wasd.W.isDown;
-    const down = this.cursors.down.isDown || this.wasd.S.isDown;
+    const left = this.cursors.left.isDown || this.wasd.A.isDown || this.joyKeys?.left?.isDown;
+    const right = this.cursors.right.isDown || this.wasd.D.isDown || this.joyKeys?.right?.isDown;
+    const up = this.cursors.up.isDown || this.wasd.W.isDown || this.joyKeys?.up?.isDown;
+    const down = this.cursors.down.isDown || this.wasd.S.isDown || this.joyKeys?.down?.isDown;
 
     if (left) { vx = -PLAYER_SPEED; direction = 'left'; moving = true; }
     if (right) { vx = PLAYER_SPEED; direction = 'right'; moving = true; }
@@ -939,7 +974,7 @@ export class WorldScene extends Phaser.Scene {
       const sprite = this.npcSprites.get(closestId)!;
       const name = sprite.getData('name');
       if (this.npcPromptLabel) {
-        this.npcPromptLabel.setText(`[E] ${name}`);
+        this.npcPromptLabel.setText(this.isMobile ? `TAP ${name}` : `[E] ${name}`);
         this.npcPromptLabel.setPosition(sprite.x, sprite.y + 14);
         this.npcPromptLabel.setVisible(true);
       }
@@ -954,6 +989,110 @@ export class WorldScene extends Phaser.Scene {
       this.nearbyNpcId = null;
       this.npcPromptLabel?.setVisible(false);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  MOBILE CONTROLS — virtual joystick + action buttons
+  // ═══════════════════════════════════════════════════════════
+  private createMobileControls() {
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const safeBottom = 20; // baseline safe area padding
+
+    // ── Virtual Joystick (left side) ──
+    try {
+      const rexPlugin = (this as any).plugins?.get?.('rexVirtualJoystick');
+      if (rexPlugin) {
+        const base = this.add.circle(0, 0, 50, 0x000000, 0.4)
+          .setScrollFactor(0).setDepth(200);
+        const thumb = this.add.circle(0, 0, 25, 0xF39C12, 0.7)
+          .setScrollFactor(0).setDepth(201);
+
+        this.joystick = rexPlugin.add(this, {
+          x: 80,
+          y: h - 80 - safeBottom,
+          radius: 50,
+          base,
+          thumb,
+          fixed: true,
+        });
+        this.joystick.setDepth(200);
+        this.joyKeys = this.joystick.createCursorKeys();
+        this.mobileButtons.push(base, thumb);
+      }
+    } catch (e) {
+      console.warn('Rex joystick plugin not available, using fallback touch');
+      this.createFallbackTouch();
+    }
+
+    // ── Interact button [E] (right side) ──
+    const eBtnX = w - 70;
+    const eBtnY = h - 130 - safeBottom;
+    const eBtn = this.add.circle(eBtnX, eBtnY, 28, 0xF39C12, 0.75)
+      .setScrollFactor(0).setDepth(200).setInteractive();
+    const eLbl = this.add.text(eBtnX, eBtnY, 'E', {
+      fontFamily: '"Press Start 2P"', fontSize: '11px', color: '#0d0a1e',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+    eBtn.on('pointerdown', () => this.handleMobileInteract());
+    this.mobileButtons.push(eBtn, eLbl);
+
+    // ── Inventory button [I] ──
+    const iBtnX = w - 70;
+    const iBtnY = h - 65 - safeBottom;
+    const iBtn = this.add.circle(iBtnX, iBtnY, 28, 0x7B68EE, 0.75)
+      .setScrollFactor(0).setDepth(200).setInteractive();
+    const iLbl = this.add.text(iBtnX, iBtnY, 'I', {
+      fontFamily: '"Press Start 2P"', fontSize: '11px', color: '#ffffff',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+    iBtn.on('pointerdown', () => {
+      this.game.events.emit('npc_inventory');
+    });
+    this.mobileButtons.push(iBtn, iLbl);
+
+    // ── Reposition on resize ──
+    this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
+      const nw = gameSize.width;
+      const nh = gameSize.height;
+      eBtn.setPosition(nw - 70, nh - 130 - safeBottom);
+      eLbl.setPosition(nw - 70, nh - 130 - safeBottom);
+      iBtn.setPosition(nw - 70, nh - 65 - safeBottom);
+      iLbl.setPosition(nw - 70, nh - 65 - safeBottom);
+      if (this.joystick) {
+        this.joystick.x = 80;
+        this.joystick.y = nh - 80 - safeBottom;
+      }
+    });
+  }
+
+  private createFallbackTouch() {
+    // Simple tap-to-move as fallback if rex plugin fails
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (!this.inputEnabled || this.introActive) return;
+      // Only use left half of screen for movement
+      if (pointer.x < this.scale.width * 0.4) {
+        const dx = pointer.worldX - this.player.x;
+        const dy = pointer.worldY - this.player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 10) {
+          const body = this.player.body as Phaser.Physics.Arcade.Body;
+          body.setVelocity(
+            (dx / dist) * PLAYER_SPEED,
+            (dy / dist) * PLAYER_SPEED
+          );
+          this.time.delayedCall(300, () => body.setVelocity(0, 0));
+        }
+      }
+    });
+  }
+
+  private handleMobileInteract() {
+    if (!this.nearbyNpcId) return;
+    const sprite = this.npcSprites.get(this.nearbyNpcId);
+    if (!sprite) return;
+    this.playInteractSound();
+    const event = sprite.getData('interactionEvent');
+    const dialogue = sprite.getData('dialogue');
+    this.game.events.emit(event, { npcId: this.nearbyNpcId, dialogue });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -975,5 +1114,9 @@ export class WorldScene extends Phaser.Scene {
     this.campfireGlows.forEach(g => g.destroy());
     this.waterTileSprites.forEach(e => e.sprite.destroy());
     this.wanderingNpcs.forEach(w => w.timer?.remove());
+    this.mobileButtons.forEach(b => b.destroy());
+    this.mobileButtons = [];
+    this.joystick = null;
+    this.joyKeys = null;
   }
 }
