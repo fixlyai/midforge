@@ -473,15 +473,19 @@ export const TEXT_STYLES = {
   },
 } as const;
 
-// ── 48×48 Character Sprite System ──────────────────────────────
-// Sprite sheets: 384×192px, 48×48 frames, 8 cols × 4 rows
-// Row 0: Walk DOWN (0-7), Row 1: Walk LEFT (8-15)
-// Row 2: Walk RIGHT (16-23), Row 3: Walk UP (24-31)
+// ── 64×64 LPC Character Sprite System ──────────────────────────
+// Sprite sheets: 576×256px, 64×64 frames, 9 cols × 4 rows
+// Row 0: Walk UP    (frames 0-8)
+// Row 1: Walk LEFT  (frames 9-17)
+// Row 2: Walk DOWN  (frames 18-26)
+// Row 3: Walk RIGHT (frames 27-35)
+// Extracted from Universal LPC Spritesheet (CC-BY-SA 3.0)
 
 export const CHARACTER_SPRITE = {
-  frameWidth: 48,
-  frameHeight: 48,
-  frameRate: 10,    // 10fps × 8 frames = 0.8s walk cycle
+  frameWidth: 64,
+  frameHeight: 64,
+  framesPerRow: 9,   // LPC standard: 9 frames per walk direction
+  frameRate: 10,     // 10fps × 9 frames = 0.9s walk cycle
 } as const;
 
 export const CHARACTER_TIERS = ['villager', 'apprentice', 'merchant', 'warrior', 'legend'] as const;

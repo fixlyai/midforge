@@ -165,8 +165,8 @@ export class WorldScene extends Phaser.Scene {
       this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, this.spriteKey);
       this.player.setDepth(PLAYER_DEPTH);
       const pBody = this.player.body as Phaser.Physics.Arcade.Body;
-      pBody.setSize(24, 16);
-      pBody.setOffset(12, 32);
+      pBody.setSize(28, 16);
+      pBody.setOffset(18, 46);    // feet-level collision for 64×64 sprite
       this.player.play(`${this.spriteKey}_idle`);
     } else {
       const spriteFrame = TIER_SPRITE_MAP[this.playerTier] ?? TIER_SPRITE_MAP.villager;
