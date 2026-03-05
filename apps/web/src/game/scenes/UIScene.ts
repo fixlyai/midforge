@@ -111,6 +111,18 @@ export class UIScene extends Phaser.Scene {
       this.showZoneBanner(label);
     });
 
+    // ── Solo mode label (when multiplayer unavailable) ──
+    this.game.events.on('solo_mode', () => {
+      const camW = this.cameras.main.width;
+      const soloPanel = this.add.graphics();
+      soloPanel.fillStyle(0x0d0a1e, 0.7);
+      soloPanel.fillRoundedRect(camW / 2 - 50, 8, 100, 16, 3);
+      this.add.text(camW / 2, 16, '🗡 SOLO MODE', {
+        fontSize: '5px', fontFamily: '"Press Start 2P", monospace',
+        color: '#F39C12', resolution: 4,
+      }).setOrigin(0.5).setAlpha(0.7);
+    });
+
     // ── Activity feed ticker (social proof) ──
     this.loadActivityFeed();
   }

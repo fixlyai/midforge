@@ -1244,6 +1244,7 @@ export class WorldScene extends Phaser.Scene {
       });
     } catch (_err) {
       // Multiplayer unavailable — game continues in solo mode
+      this.game.events.emit('solo_mode');
     }
   }
 
