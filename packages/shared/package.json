@@ -6,6 +6,7 @@
   "exports": {
     "./types": "./types.ts",
     "./quests": "./quests.ts",
-    "./combat": "./combat.ts"
+    "./combat": "./combat.ts",
+    "./constants/game": "./constants/game.ts"
   }
 }
