@@ -5,6 +5,7 @@ import {
   TILESHEET_BATTLE,
   TILESHEET_DUNGEON,
   AUDIO,
+  MAP_FILE,
 } from '@midforge/shared/constants/game';
 
 export class PreloadScene extends Phaser.Scene {
@@ -13,6 +14,9 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   preload() {
+    // ── Map JSON ─────────────────────────────────────────
+    this.load.json('map_data', MAP_FILE);
+
     // ── Tilesheets ───────────────────────────────────────
     this.load.spritesheet(TILESHEET_TOWN.key, TILESHEET_TOWN.path, {
       frameWidth: TILESHEET_TOWN.frameWidth,

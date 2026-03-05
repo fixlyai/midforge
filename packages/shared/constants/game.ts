@@ -4,10 +4,13 @@
 //  character mapping lives here. No magic numbers in scenes.
 // ─────────────────────────────────────────────────────────────
 
-// ── Tile Dimensions ──────────────────────────────────────────
+// ── Map File ────────────────────────────────────────────────
+export const MAP_FILE = '/maps/starter_village_v2.tmj';
+
+// ── Tile Dimensions (defaults — overridden by map properties) ─
 export const TILE_SIZE = 16;
-export const MAP_COLS = 60;
-export const MAP_ROWS = 45;
+export const MAP_COLS = 80;
+export const MAP_ROWS = 70;
 export const MAP_WIDTH = MAP_COLS * TILE_SIZE;
 export const MAP_HEIGHT = MAP_ROWS * TILE_SIZE;
 
@@ -223,6 +226,10 @@ export const DUNGEON_TILES = {
   stairs: 42,
 } as const;
 
+// ── Tileset firstgid values (must match .tmj tilesets) ──────
+export const FIRSTGID_TOWN = 1;
+export const FIRSTGID_DUNGEON = 300;
+
 // ── Tier → Character Sprite Mapping ─────────────────────────
 export const TIER_SPRITE_MAP: Record<string, number> = {
   villager: DUNGEON_TILES.charPeasant,     // 85 — brown peasant
@@ -230,6 +237,28 @@ export const TIER_SPRITE_MAP: Record<string, number> = {
   merchant: DUNGEON_TILES.charMage,         // 84 — purple mage
   warrior: DUNGEON_TILES.charWarrior,       // 110 — red warrior
   legend: DUNGEON_TILES.charKing,           // 109 — golden king
+};
+
+// ── NPC sprite name → dungeon tile index (.tmj uses string names) ─
+export const NPC_SPRITE_NAMES: Record<string, number> = {
+  elder: DUNGEON_TILES.charWizard,         // 112 — quest giver / forge master
+  guard: DUNGEON_TILES.charKnight,         // 87  — knight with shield
+  warrior: DUNGEON_TILES.charWarrior,      // 110 — red warrior
+  merchant: DUNGEON_TILES.charMonk,        // 88  — marketplace NPC
+  villager: DUNGEON_TILES.charPeasant,     // 85  — brown peasant
+};
+
+// ── NPC type → game event mapping (.tmj npcType → event name) ─
+export const NPC_TYPE_EVENT: Record<string, string> = {
+  intro: 'npc_intro',
+  gate_guard: 'npc_gate_guard',
+  quest_giver: 'npc_quests',
+  blacksmith: 'npc_inventory',
+  marketplace: 'npc_marketplace',
+  arena_manager: 'npc_arena',
+  tavern: 'npc_tavern',
+  ambient: 'npc_ambient',
+  future_npc: 'npc_future',
 };
 
 export const TIER_COLORS: Record<string, string> = {

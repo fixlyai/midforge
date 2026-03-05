@@ -1,135 +1,45 @@
 // @ts-ignore — Phaser exports default from ESM build
 import Phaser from 'phaser';
 import {
-  TILE_SIZE, MAP_COLS, MAP_ROWS, MAP_WIDTH, MAP_HEIGHT,
+  TILE_SIZE, MAP_WIDTH, MAP_HEIGHT,
   CAMERA_ZOOM, CAMERA_LERP,
   PLAYER_SPEED, PLAYER_HITBOX, PLAYER_DEPTH, PLAYER_LABEL_DEPTH,
   NPC_INTERACT_DISTANCE, FOOTSTEP_TILE_INTERVAL,
-  TILESHEET_TOWN, TILESHEET_BATTLE, TILESHEET_DUNGEON,
-  TOWN_TILES, BATTLE_TILES,
+  TILESHEET_TOWN, TILESHEET_DUNGEON,
+  FIRSTGID_TOWN, FIRSTGID_DUNGEON,
   TIER_SPRITE_MAP, TIER_COLORS,
-  NPCS, ZONES, TERRAIN,
+  NPC_SPRITE_NAMES, NPC_TYPE_EVENT,
   INTRO, TEXT_STYLES,
 } from '@midforge/shared/constants/game';
 
-// ── Programmatic Map Generation ──────────────────────────────
-function generateMapData(): number[][] {
-  const T = TERRAIN;
-  const map: number[][] = [];
-  for (let r = 0; r < MAP_ROWS; r++) {
-    const row: number[] = [];
-    for (let c = 0; c < MAP_COLS; c++) {
-      // Default: grass
-      let tile = T.GRASS;
-
-      // ── Border walls ───────────────────────────────────
-      if (r <= 1 || r >= MAP_ROWS - 2 || c <= 1 || c >= MAP_COLS - 2) {
-        tile = T.TREE;
-      }
-      // ── Main vertical road (from gate south to spawn) ──
-      else if (c >= 29 && c <= 31 && r >= 5 && r <= 40) {
-        tile = T.PATH;
-      }
-      // ── Main horizontal road (east-west through village)
-      else if (r >= 19 && r <= 21 && c >= 10 && c <= 50) {
-        tile = T.PATH;
-      }
-      // ── Secondary path to blacksmith ───────────────────
-      else if (c >= 14 && c <= 16 && r >= 10 && r <= 19) {
-        tile = T.PATH;
-      }
-      // ── Secondary path to marketplace ──────────────────
-      else if (c >= 34 && c <= 36 && r >= 10 && r <= 19) {
-        tile = T.PATH;
-      }
-      // ── Castle gate area (far north) ───────────────────
-      else if (r >= 3 && r <= 6 && c >= 27 && c <= 33) {
-        tile = T.STONE_WALL;
-      }
-      // ── Castle gate opening ────────────────────────────
-      else if (r === 6 && c >= 29 && c <= 31) {
-        tile = T.DOOR;
-      }
-      // ── Blacksmith building ────────────────────────────
-      else if (r >= 9 && r <= 12 && c >= 12 && c <= 17) {
-        tile = T.WOOD_WALL;
-      }
-      // ── Blacksmith door ────────────────────────────────
-      else if (r === 12 && c === 15) {
-        tile = T.DOOR;
-      }
-      // ── Marketplace building ───────────────────────────
-      else if (r >= 9 && r <= 12 && c >= 33 && c <= 38) {
-        tile = T.WOOD_WALL;
-      }
-      // ── Marketplace door ───────────────────────────────
-      else if (r === 12 && c === 35) {
-        tile = T.DOOR;
-      }
-      // ── Arena building (east) ──────────────────────────
-      else if (r >= 17 && r <= 23 && c >= 43 && c <= 49) {
-        tile = T.STONE_WALL;
-      }
-      // ── Arena entrance ─────────────────────────────────
-      else if (r >= 19 && r <= 21 && c === 43) {
-        tile = T.DOOR;
-      }
-      // ── Quest giver hut ───────────────────────────────
-      else if (r >= 14 && r <= 17 && c >= 20 && c <= 24) {
-        tile = T.WOOD_WALL;
-      }
-      else if (r === 17 && c === 22) {
-        tile = T.DOOR;
-      }
-      // ── Pond (southwest) ──────────────────────────────
-      else if (r >= 25 && r <= 29 && c >= 8 && c <= 13) {
-        tile = T.WATER;
-      }
-      // ── Village gate (south entry) ────────────────────
-      else if (r >= 31 && r <= 33 && c >= 27 && c <= 33) {
-        if (r === 33 && c >= 29 && c <= 31) {
-          tile = T.PATH;
-        } else if (c === 27 || c === 33) {
-          tile = T.STONE_WALL;
-        } else if (r === 31) {
-          tile = T.STONE_WALL;
-        } else {
-          tile = T.PATH;
-        }
-      }
-      // ── Scattered trees for atmosphere ─────────────────
-      else if (
-        (r === 8 && c === 8) || (r === 10 && c === 25) || (r === 7 && c === 40) ||
-        (r === 15 && c === 42) || (r === 26 && c === 20) || (r === 28 && c === 40) ||
-        (r === 13 && c === 5) || (r === 24 && c === 50) || (r === 30 && c === 15) ||
-        (r === 8 && c === 50) || (r === 35 && c === 8) || (r === 35 && c === 45) ||
-        (r === 38 && c === 25) || (r === 15 && c === 8) || (r === 22 && c === 15)
-      ) {
-        tile = T.TREE;
-      }
-      // ── Fences along paths ────────────────────────────
-      else if (
-        (r === 18 && c >= 10 && c <= 50 && c % 4 === 0) ||
-        (r === 22 && c >= 10 && c <= 50 && c % 4 === 2)
-      ) {
-        tile = T.FENCE;
-      }
-
-      row.push(tile);
-    }
-    map.push(row);
-  }
-  return map;
+// ── TMJ type helpers ─────────────────────────────────────────
+interface TmjProperty { name: string; type: string; value: any }
+interface TmjObject {
+  id: number; name: string; type: string;
+  x: number; y: number; width: number; height: number;
+  visible: boolean; rotation: number;
+  properties?: TmjProperty[];
+}
+interface TmjTileLayer {
+  id: number; name: string; type: 'tilelayer';
+  width: number; height: number; data: number[];
+  visible: boolean; opacity: number;
+}
+interface TmjObjectLayer {
+  id: number; name: string; type: 'objectgroup';
+  objects: TmjObject[]; visible: boolean; opacity: number;
+}
+type TmjLayer = TmjTileLayer | TmjObjectLayer;
+interface TmjMap {
+  width: number; height: number;
+  tilewidth: number; tileheight: number;
+  layers: TmjLayer[];
+  tilesets: { firstgid: number; source: string }[];
+  properties?: TmjProperty[];
 }
 
-const MAP_DATA = generateMapData();
-
-// ── Helper: tile index to pixel center ──────────────────────
-function tileToPixel(tileX: number, tileY: number): { x: number; y: number } {
-  return {
-    x: tileX * TILE_SIZE + TILE_SIZE / 2,
-    y: tileY * TILE_SIZE + TILE_SIZE / 2,
-  };
+function getProp(obj: { properties?: TmjProperty[] }, name: string): any {
+  return obj.properties?.find(p => p.name === name)?.value;
 }
 
 export class WorldScene extends Phaser.Scene {
@@ -142,8 +52,10 @@ export class WorldScene extends Phaser.Scene {
   private nameLabel!: Phaser.GameObjects.Text;
   private inputEnabled = false;
 
-  // Audio
   private footstepCounter = 0;
+  private groundData: number[] = [];
+  private mapCols = 80;
+  private mapRows = 70;
 
   // Multiplayer
   private colyseusRoom: any = null;
@@ -165,8 +77,15 @@ export class WorldScene extends Phaser.Scene {
   private dialogueBox: Phaser.GameObjects.Container | null = null;
   private dialogueText: Phaser.GameObjects.Text | null = null;
 
-  // Map tile type lookup for audio
-  private tileTypeMap: number[][] = MAP_DATA;
+  // Zones
+  private fogGraphics: Phaser.GameObjects.Graphics[] = [];
+  private fogLabels: Phaser.GameObjects.Text[] = [];
+  private zoneOverlaps: Phaser.GameObjects.Zone[] = [];
+
+  // Spawn points from map
+  private spawnDefault = { x: 624, y: 736 };
+  private spawnNewGame = { x: 624, y: 240 };
+  private questGiverPos = { x: 640, y: 592 };
 
   constructor() {
     super({ key: 'WorldScene' });
@@ -176,27 +95,48 @@ export class WorldScene extends Phaser.Scene {
     const playerData = this.registry.get('playerData');
     this.playerTier = playerData?.tier ?? 'villager';
 
-    this.buildMap();
-    this.spawnNpcs();
+    const mapData = this.cache.json.get('map_data') as TmjMap;
+    if (!mapData) {
+      this.add.text(100, 100, 'Map data missing — drop starter_village_v2.tmj in /public/maps/',
+        { color: '#ff0000', fontSize: '14px' });
+      return;
+    }
+
+    this.mapCols = mapData.width;
+    this.mapRows = mapData.height;
+    const ts = mapData.tilewidth;
+    const mapW = this.mapCols * ts;
+    const mapH = this.mapRows * ts;
+
+    const cameraZoom = getProp(mapData, 'cameraZoom') ?? CAMERA_ZOOM;
+
+    this.walls = this.physics.add.staticGroup();
+
+    // ── Render layers ────────────────────────────────────
+    this.renderGroundLayer(mapData);
+    this.renderCollisionLayer(mapData);
+    this.parseSpawnPoints(mapData);
+    this.spawnNpcsFromMap(mapData);
+    this.parseZones(mapData);
 
     // ── Player ──────────────────────────────────────────
-    const spawn = ZONES.spawn;
-    const spawnPos = tileToPixel(spawn.x, spawn.y);
+    const isFirstLogin = playerData?.firstLogin !== false;
+    const spawnPos = isFirstLogin ? this.spawnNewGame : this.spawnDefault;
     const spriteFrame = TIER_SPRITE_MAP[this.playerTier] ?? TIER_SPRITE_MAP.villager;
 
     this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, TILESHEET_DUNGEON.key, spriteFrame);
     this.player.setDepth(PLAYER_DEPTH);
-    const body = this.player.body as Phaser.Physics.Arcade.Body;
-    body.setSize(PLAYER_HITBOX.width, PLAYER_HITBOX.height);
-    body.setOffset(PLAYER_HITBOX.offsetX, PLAYER_HITBOX.offsetY);
+    const pBody = this.player.body as Phaser.Physics.Arcade.Body;
+    pBody.setSize(PLAYER_HITBOX.width, PLAYER_HITBOX.height);
+    pBody.setOffset(PLAYER_HITBOX.offsetX, PLAYER_HITBOX.offsetY);
     this.player.setCollideWorldBounds(true);
     this.physics.add.collider(this.player, this.walls);
 
     // ── Camera ──────────────────────────────────────────
     this.cameras.main.startFollow(this.player, true, CAMERA_LERP, CAMERA_LERP);
-    this.cameras.main.setZoom(CAMERA_ZOOM);
-    this.cameras.main.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
-    this.physics.world.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
+    this.cameras.main.setZoom(cameraZoom);
+    this.cameras.main.setBounds(0, 0, mapW, mapH);
+    this.physics.world.setBounds(0, 0, mapW, mapH);
 
     // ── Input ───────────────────────────────────────────
     this.cursors = this.input.keyboard!.createCursorKeys();
@@ -215,151 +155,228 @@ export class WorldScene extends Phaser.Scene {
       .setOrigin(0.5).setDepth(100).setVisible(false);
 
     // ── Zone Label ──────────────────────────────────────
-    this.add.text(8, 8, 'Starter Village', TEXT_STYLES.zoneName)
+    const worldName = getProp(mapData, 'worldName') ?? 'Starter Village';
+    this.add.text(8, 8, worldName, TEXT_STYLES.zoneName)
       .setScrollFactor(0).setDepth(100);
 
     // ── Decide: intro sequence or normal play ───────────
-    const isFirstLogin = playerData?.firstLogin !== false;
     if (isFirstLogin) {
       this.startIntroSequence(username);
     } else {
       this.inputEnabled = true;
     }
 
+    // ── Expanding world: fetch unlock status ────────────
+    this.fetchUnlockStatus();
+
     this.connectMultiplayer(playerData);
     this.game.events.emit('world_ready');
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  MAP BUILDING
+  //  GROUND LAYER — render tile-by-tile from .tmj data
   // ═══════════════════════════════════════════════════════════
-  private buildMap() {
-    this.walls = this.physics.add.staticGroup();
-    const T = TERRAIN;
+  private renderGroundLayer(map: TmjMap) {
+    const layer = map.layers.find(l => l.name === 'Ground' && l.type === 'tilelayer') as TmjTileLayer | undefined;
+    if (!layer) return;
+
+    this.groundData = layer.data;
+    const ts = map.tilewidth;
     const townKey = TILESHEET_TOWN.key;
-    const tt = TOWN_TILES;
+    const cols = map.width;
 
-    for (let r = 0; r < MAP_ROWS; r++) {
-      for (let c = 0; c < MAP_COLS; c++) {
-        const tile = MAP_DATA[r][c];
-        const pos = tileToPixel(c, r);
+    for (let i = 0; i < layer.data.length; i++) {
+      const gid = layer.data[i];
+      if (gid === 0) continue;
 
-        // Always draw grass base
-        this.add.image(pos.x, pos.y, townKey, tt.grassLight + ((r + c) % 2)).setDepth(0);
+      const c = i % cols;
+      const r = Math.floor(i / cols);
+      const px = c * ts + ts / 2;
+      const py = r * ts + ts / 2;
 
-        switch (tile) {
-          case T.GRASS:
-            break;
-
-          case T.PATH:
-            this.add.image(pos.x, pos.y, townKey, tt.pathCenter).setDepth(1);
-            break;
-
-          case T.STONE_WALL: {
-            this.add.image(pos.x, pos.y, townKey, tt.stoneWallMid).setDepth(2);
-            const wall = this.physics.add.staticImage(pos.x, pos.y, townKey, tt.stoneWallMid);
-            wall.setVisible(false).setDepth(0);
-            body(wall).setSize(TILE_SIZE, TILE_SIZE);
-            this.walls.add(wall);
-            break;
-          }
-
-          case T.WATER: {
-            const battleKey = TILESHEET_BATTLE.key;
-            this.add.image(pos.x, pos.y, battleKey, BATTLE_TILES.waterFull).setDepth(1);
-            const w = this.physics.add.staticImage(pos.x, pos.y, battleKey, BATTLE_TILES.waterFull);
-            w.setVisible(false).setDepth(0);
-            body(w).setSize(TILE_SIZE, TILE_SIZE);
-            this.walls.add(w);
-            break;
-          }
-
-          case T.WOOD_WALL: {
-            this.add.image(pos.x, pos.y, townKey, tt.woodWallTL).setDepth(2);
-            const ww = this.physics.add.staticImage(pos.x, pos.y, townKey, tt.woodWallTL);
-            ww.setVisible(false).setDepth(0);
-            body(ww).setSize(TILE_SIZE, TILE_SIZE);
-            this.walls.add(ww);
-            break;
-          }
-
-          case T.DOOR:
-            this.add.image(pos.x, pos.y, townKey, tt.woodDoor).setDepth(1);
-            break;
-
-          case T.TREE: {
-            this.add.image(pos.x, pos.y, townKey, tt.treePineBottom).setDepth(2);
-            this.add.image(pos.x, pos.y - TILE_SIZE, townKey, tt.treePineTop).setDepth(12);
-            const tw = this.physics.add.staticImage(pos.x, pos.y, townKey, tt.treePineBottom);
-            tw.setVisible(false).setDepth(0);
-            body(tw).setSize(TILE_SIZE, TILE_SIZE);
-            this.walls.add(tw);
-            break;
-          }
-
-          case T.FENCE: {
-            this.add.image(pos.x, pos.y, townKey, tt.fenceH).setDepth(3);
-            const fw = this.physics.add.staticImage(pos.x, pos.y, townKey, tt.fenceH);
-            fw.setVisible(false).setDepth(0);
-            body(fw).setSize(TILE_SIZE, TILE_SIZE / 2).setOffset(0, TILE_SIZE / 4);
-            this.walls.add(fw);
-            break;
-          }
-
-          case T.DECORATION:
-            this.add.image(pos.x, pos.y, townKey, tt.barrel).setDepth(3);
-            break;
-        }
-      }
+      // Determine which tileset this GID belongs to
+      const localId = gid - FIRSTGID_TOWN;
+      this.add.image(px, py, townKey, localId).setDepth(0);
     }
-
-    // ── Decorative details ─────────────────────────────
-    // Well at village center
-    const wellPos = tileToPixel(30, 18);
-    this.add.image(wellPos.x, wellPos.y, townKey, tt.well).setDepth(3);
-
-    // Sign posts near key locations
-    const signQuest = tileToPixel(22, 18);
-    this.add.image(signQuest.x, signQuest.y, townKey, tt.signPost).setDepth(3);
-
-    const signArena = tileToPixel(42, 20);
-    this.add.image(signArena.x, signArena.y, townKey, tt.signPost).setDepth(3);
-
-    // Torches on arena walls
-    const torchL = tileToPixel(43, 18);
-    const torchR = tileToPixel(43, 22);
-    this.add.image(torchL.x, torchL.y, townKey, tt.torch).setDepth(4);
-    this.add.image(torchR.x, torchR.y, townKey, tt.torch).setDepth(4);
-
-    // Barrels near blacksmith
-    const barrelPos = tileToPixel(18, 11);
-    this.add.image(barrelPos.x, barrelPos.y, townKey, tt.barrel).setDepth(3);
-    const cratePos = tileToPixel(18, 12);
-    this.add.image(cratePos.x, cratePos.y, townKey, tt.crate).setDepth(3);
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  NPC SPAWNING
+  //  COLLISION LAYER — create physics bodies from objects
   // ═══════════════════════════════════════════════════════════
-  private spawnNpcs() {
+  private renderCollisionLayer(map: TmjMap) {
+    const layer = map.layers.find(l => l.name === 'Collision' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    if (!layer) return;
+
+    for (const obj of layer.objects) {
+      const cx = obj.x + obj.width / 2;
+      const cy = obj.y + obj.height / 2;
+      const wall = this.physics.add.staticImage(cx, cy, '__DEFAULT');
+      wall.setVisible(false).setDepth(0);
+      const b = wall.body as Phaser.Physics.Arcade.Body;
+      b.setSize(obj.width, obj.height);
+      b.setOffset(-obj.width / 2, -obj.height / 2);
+      this.walls.add(wall);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  SPAWN POINTS — read from SpawnPoints layer
+  // ═══════════════════════════════════════════════════════════
+  private parseSpawnPoints(map: TmjMap) {
+    const layer = map.layers.find(l => l.name === 'SpawnPoints' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    if (!layer) return;
+
+    for (const obj of layer.objects) {
+      if (obj.name === 'player_default') {
+        this.spawnDefault = { x: obj.x + 8, y: obj.y + 8 };
+      } else if (obj.name === 'player_new_game') {
+        this.spawnNewGame = { x: obj.x + 8, y: obj.y + 8 };
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  NPCs — spawn from map objects, use sprite property string
+  // ═══════════════════════════════════════════════════════════
+  private spawnNpcsFromMap(map: TmjMap) {
+    const layer = map.layers.find(l => l.name === 'NPCs' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    if (!layer) return;
+
     const dungeonKey = TILESHEET_DUNGEON.key;
 
-    for (const npc of NPCS) {
-      const pos = tileToPixel(npc.tileX, npc.tileY);
+    for (const obj of layer.objects) {
+      const spriteName = getProp(obj, 'sprite') ?? 'villager';
+      const npcType = getProp(obj, 'npcType') ?? 'ambient';
+      const dialogue = getProp(obj, 'dialogue') ?? '';
+      const tierRequired = getProp(obj, 'tierRequired') ?? '';
+      const wandering = getProp(obj, 'wandering') ?? false;
 
-      const sprite = this.add.image(pos.x, pos.y, dungeonKey, npc.spriteIndex)
-        .setDepth(8);
+      const frame = NPC_SPRITE_NAMES[spriteName] ?? NPC_SPRITE_NAMES.villager;
+      const px = obj.x + 8;
+      const py = obj.y + 8;
 
-      sprite.setData('npcId', npc.id);
-      sprite.setData('interactionEvent', npc.interactionEvent);
-      sprite.setData('name', npc.name);
-      this.npcSprites.set(npc.id, sprite);
+      const isLocked = tierRequired.startsWith('locked_until_');
 
-      const label = this.add.text(pos.x, pos.y - 14, `${npc.name}\n${npc.role}`, {
-        ...TEXT_STYLES.npcName,
-        color: '#F39C12',
-      }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
-      this.npcLabels.set(npc.id, label);
+      const sprite = this.add.image(px, py, dungeonKey, frame)
+        .setDepth(8)
+        .setVisible(!isLocked);
+
+      const eventName = NPC_TYPE_EVENT[npcType] ?? 'npc_ambient';
+      sprite.setData('npcId', obj.name);
+      sprite.setData('interactionEvent', eventName);
+      sprite.setData('name', obj.name);
+      sprite.setData('dialogue', dialogue);
+      sprite.setData('npcType', npcType);
+      sprite.setData('tierRequired', tierRequired);
+      sprite.setData('wandering', wandering);
+
+      if (!isLocked) {
+        this.npcSprites.set(obj.name, sprite);
+
+        const roleLabel = npcType === 'ambient' ? '' : `\n${npcType.replace('_', ' ')}`;
+        const label = this.add.text(px, py - 14, `${obj.name}${roleLabel}`, {
+          ...TEXT_STYLES.npcName,
+          color: '#F39C12',
+        }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
+        this.npcLabels.set(obj.name, label);
+      }
+
+      // Store quest giver position for glowing path
+      if (npcType === 'quest_giver') {
+        this.questGiverPos = { x: px, y: py };
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  ZONES — parse zone triggers and future zones
+  // ═══════════════════════════════════════════════════════════
+  private parseZones(map: TmjMap) {
+    const layer = map.layers.find(l => l.name === 'Zones' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    if (!layer) return;
+
+    for (const obj of layer.objects) {
+      const zoneType = getProp(obj, 'zoneType') ?? '';
+
+      if (zoneType === 'future_zone') {
+        // Render fog overlay (will be updated by fetchUnlockStatus)
+        const gfx = this.add.graphics();
+        gfx.fillStyle(0x0d0a1e, 0.65);
+        gfx.fillRect(obj.x, obj.y, obj.width, obj.height);
+        gfx.lineStyle(2, 0xF39C12, 0.4);
+        gfx.strokeRect(obj.x, obj.y, obj.width, obj.height);
+        gfx.setDepth(50);
+        gfx.setData('zoneName', obj.name);
+        gfx.setData('threshold', getProp(obj, 'unlockThreshold') ?? 9999);
+        gfx.setData('lockedMessage', getProp(obj, 'lockedMessage') ?? '');
+        gfx.setData('zoneDisplayName', getProp(obj, 'zoneName') ?? obj.name);
+        this.fogGraphics.push(gfx);
+
+        // Progress label
+        const label = this.add.text(
+          obj.x + obj.width / 2,
+          obj.y + obj.height / 2,
+          getProp(obj, 'zoneName') ?? obj.name,
+          {
+            fontSize: '5px',
+            fontFamily: '"Press Start 2P", monospace',
+            color: '#F39C12',
+            stroke: '#000000',
+            strokeThickness: 2,
+            align: 'center' as const,
+          }
+        ).setOrigin(0.5).setDepth(51);
+        label.setData('zoneName', obj.name);
+        this.fogLabels.push(label);
+      }
+
+      if (zoneType === 'social_hub') {
+        // Campfire zone — warm amber glow when player enters
+        const zone = this.add.zone(
+          obj.x + obj.width / 2,
+          obj.y + obj.height / 2,
+          obj.width,
+          obj.height
+        );
+        this.physics.world.enable(zone);
+        (zone.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+        (zone.body as Phaser.Physics.Arcade.Body).moves = false;
+        zone.setData('zoneType', 'social_hub');
+        this.zoneOverlaps.push(zone);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  EXPANDING WORLD — fetch unlock status from API
+  // ═══════════════════════════════════════════════════════════
+  private async fetchUnlockStatus() {
+    try {
+      const res = await fetch('/api/world/unlock-status');
+      if (!res.ok) return;
+      const data = await res.json() as { userCount: number; unlockedZones: string[] };
+
+      for (const gfx of this.fogGraphics) {
+        const zoneName = gfx.getData('zoneName') as string;
+        const threshold = gfx.getData('threshold') as number;
+        const lockedMsg = gfx.getData('lockedMessage') as string;
+
+        if (data.unlockedZones.includes(zoneName)) {
+          // Zone unlocked — remove fog
+          gfx.destroy();
+          const label = this.fogLabels.find(l => l.getData('zoneName') === zoneName);
+          label?.destroy();
+        } else {
+          // Update progress text
+          const label = this.fogLabels.find(l => l.getData('zoneName') === zoneName);
+          if (label) {
+            const displayName = gfx.getData('zoneDisplayName') as string;
+            label.setText(`${displayName}\n${data.userCount}/${threshold} builders`);
+          }
+        }
+      }
+    } catch (_err) {
+      // API unavailable — fog stays as-is
     }
   }
 
@@ -370,46 +387,43 @@ export class WorldScene extends Phaser.Scene {
     this.introActive = true;
     this.inputEnabled = false;
 
-    // Camera zoom in slowly
-    this.cameras.main.setZoom(INTRO.zoomStart * CAMERA_ZOOM);
+    const cameraZoom = this.cameras.main.zoom;
+
+    this.cameras.main.setZoom(INTRO.zoomStart * cameraZoom);
     this.tweens.add({
       targets: this.cameras.main,
-      zoom: INTRO.zoomEnd * CAMERA_ZOOM,
+      zoom: INTRO.zoomEnd * cameraZoom,
       duration: INTRO.zoomDuration,
       ease: 'Sine.easeInOut',
     });
 
-    // Create the Forge Master sprite walking toward player
-    const fmNpc = NPCS.find(n => n.id === 'forge_master')!;
-    const gatePos = tileToPixel(ZONES.gatePosition.x, ZONES.gatePosition.y);
-    const fmSprite = this.add.image(gatePos.x, gatePos.y, TILESHEET_DUNGEON.key, fmNpc.spriteIndex)
-      .setDepth(PLAYER_DEPTH + 1);
+    // Find the ForgeMaster NPC sprite on the map
+    const fmSprite = this.npcSprites.get('ForgeMaster');
+    const fmPos = fmSprite ? { x: fmSprite.x, y: fmSprite.y } : this.spawnNewGame;
 
-    // Walk Forge Master down to player
-    const playerPos = tileToPixel(ZONES.spawn.x, ZONES.spawn.y);
-    const walkDuration = Math.abs(playerPos.y - gatePos.y) / INTRO.forgeMasterWalkSpeed * 1000;
+    // Create a walking Forge Master from above the player down toward them
+    const walkSprite = this.add.image(fmPos.x, fmPos.y - 80, TILESHEET_DUNGEON.key,
+      NPC_SPRITE_NAMES.elder).setDepth(PLAYER_DEPTH + 1);
+
+    const walkDuration = 80 / INTRO.forgeMasterWalkSpeed * 1000;
 
     this.tweens.add({
-      targets: fmSprite,
-      y: playerPos.y - TILE_SIZE * 2,
+      targets: walkSprite,
+      y: fmPos.y,
       duration: walkDuration,
       ease: 'Linear',
       onComplete: () => {
-        // Show dialogue
         const lines = INTRO.dialogLines.map(l => l.replace('@{username}', `@${username}`));
         this.showTypewriterDialogue(lines, () => {
-          // After dialogue: zoom back out, open gate, enable input
-          fmSprite.destroy();
+          walkSprite.destroy();
           this.tweens.add({
             targets: this.cameras.main,
-            zoom: CAMERA_ZOOM,
+            zoom: cameraZoom,
             duration: 1000,
             ease: 'Sine.easeOut',
           });
 
-          // Show glowing path toward quest giver
           this.showGlowingPath();
-
           this.introActive = false;
           this.inputEnabled = true;
         });
@@ -418,7 +432,6 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private showTypewriterDialogue(lines: string[], onComplete: () => void) {
-    // Create dialogue box at bottom of screen (fixed to camera)
     const cam = this.cameras.main;
     const boxH = 50;
     const boxW = cam.width;
@@ -445,7 +458,6 @@ export class WorldScene extends Phaser.Scene {
     let lineIndex = 0;
     const showLine = () => {
       if (lineIndex >= lines.length) {
-        // Cleanup dialogue
         this.dialogueBox?.destroy();
         this.dialogueBox = null;
         this.dialogueText = null;
@@ -470,7 +482,6 @@ export class WorldScene extends Phaser.Scene {
         },
       });
 
-      // Wait for space or click to advance
       const spaceKey = this.input.keyboard!.addKey('SPACE');
       const advanceListener = () => {
         if (charIndex < text.length) {
@@ -493,32 +504,23 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private showGlowingPath() {
-    // Draw amber-tinted tiles from spawn to quest giver
-    const startX = ZONES.spawn.x as number;
-    const startY = ZONES.spawn.y as number;
-    const endX = ZONES.questGiver.x as number;
-    const endY = ZONES.questGiver.y as number;
+    const startX = this.player.x;
+    const startY = this.player.y;
+    const endX = this.questGiverPos.x;
+    const endY = this.questGiverPos.y;
 
     const pathTiles: Phaser.GameObjects.Rectangle[] = [];
+    const steps = Math.max(Math.abs(endX - startX), Math.abs(endY - startY)) / TILE_SIZE;
 
-    // Vertical segment
-    const yDir = endY < startY ? -1 : 1;
-    for (let y = startY; y !== endY; y += yDir) {
-      const pos = tileToPixel(startX, y);
-      const glow = this.add.rectangle(pos.x, pos.y, TILE_SIZE, TILE_SIZE, 0xF39C12, 0.15)
-        .setDepth(1);
-      pathTiles.push(glow);
-    }
-    // Horizontal segment
-    const xDir = endX < startX ? -1 : 1;
-    for (let x = startX; x !== endX + xDir; x += xDir) {
-      const pos = tileToPixel(x, endY);
-      const glow = this.add.rectangle(pos.x, pos.y, TILE_SIZE, TILE_SIZE, 0xF39C12, 0.15)
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const px = startX + (endX - startX) * t;
+      const py = startY + (endY - startY) * t;
+      const glow = this.add.rectangle(px, py, TILE_SIZE, TILE_SIZE, 0xF39C12, 0.15)
         .setDepth(1);
       pathTiles.push(glow);
     }
 
-    // Fade out after duration
     this.time.delayedCall(INTRO.glowPathFadeDuration, () => {
       this.tweens.add({
         targets: pathTiles,
@@ -595,17 +597,19 @@ export class WorldScene extends Phaser.Scene {
   //  AUDIO
   // ═══════════════════════════════════════════════════════════
   private playFootstep() {
+    // Use ground tile GID to determine surface type
     const tileX = Math.floor(this.player.x / TILE_SIZE);
     const tileY = Math.floor(this.player.y / TILE_SIZE);
-    const tileType = this.tileTypeMap[tileY]?.[tileX] ?? TERRAIN.GRASS;
-    const isStone = tileType === TERRAIN.STONE_WALL || tileType === TERRAIN.PATH;
+    const idx = tileY * this.mapCols + tileX;
+    const gid = this.groundData[idx] ?? 1;
 
-    const prefix = isStone ? 'footstep_stone' : 'footstep_grass';
-    const count = isStone ? 3 : 3;
-    const idx = Math.floor(Math.random() * count);
-    const key = `${prefix}_${idx}`;
+    // GIDs 1-4 are grass variants, 25-26 are sand; anything else = stone path
+    const isGrass = gid >= 1 && gid <= 4;
+    const prefix = isGrass ? 'footstep_grass' : 'footstep_stone';
+    const sfxIdx = Math.floor(Math.random() * 3);
+    const key = `${prefix}_${sfxIdx}`;
 
-    if (this.sound.get(key) || this.cache.audio.exists(key)) {
+    if (this.cache.audio.exists(key)) {
       this.sound.play(key, { volume: 0.15 });
     }
   }
@@ -655,7 +659,6 @@ export class WorldScene extends Phaser.Scene {
 
     this.nameLabel.setPosition(this.player.x, this.player.y - 12);
 
-    // Multiplayer position sync (~15 fps)
     this.sendTimer += delta;
     if (this.colyseusRoom && this.sendTimer > 66) {
       this.sendTimer = 0;
@@ -701,7 +704,8 @@ export class WorldScene extends Phaser.Scene {
       if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
         this.playInteractSound();
         const event = sprite.getData('interactionEvent');
-        this.game.events.emit(event, { npcId: closestId });
+        const dialogue = sprite.getData('dialogue');
+        this.game.events.emit(event, { npcId: closestId, dialogue });
       }
     } else {
       this.nearbyNpcId = null;
@@ -721,11 +725,8 @@ export class WorldScene extends Phaser.Scene {
     this.otherLabels.forEach((l) => l.destroy());
     this.otherPlayers.clear();
     this.otherLabels.clear();
+    this.fogGraphics.forEach(g => g.destroy());
+    this.fogLabels.forEach(l => l.destroy());
     this.dialogueBox?.destroy();
   }
-}
-
-// ── Utility: get physics body from static image ─────────────
-function body(img: Phaser.Physics.Arcade.Image): Phaser.Physics.Arcade.Body {
-  return img.body as Phaser.Physics.Arcade.Body;
 }
