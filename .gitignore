@@ -33,5 +33,8 @@ next-env.d.ts
 drizzle/
 migrations/
 
+# scripts cache
+scripts/.lpc-cache/
+
 # lock
 package-lock.json

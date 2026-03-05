@@ -1,9 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 export default function ArenaPreviewPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0818]" />}>
+      <ArenaPreviewContent />
+    </Suspense>
+  );
+}
+
+function ArenaPreviewContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<any>(null);
   const searchParams = useSearchParams();
