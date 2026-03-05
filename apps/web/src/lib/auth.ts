@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import Twitter from 'next-auth/providers/twitter';
 import { db } from '@midforge/db/client';
 import { players } from '@midforge/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { calculateTier, calculateLevel, getBestWeapon, getBestArmor } from '@midforge/shared/types';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -30,8 +30,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       if (existing.length > 0) {
         // Update on each login
-        const tier = calculateTier(existing[0].mrr ?? 0, xFollowers);
-        const level = calculateLevel(existing[0].xp ?? 0);
+        const player = existing[0];
+        const tier = calculateTier(player.mrr ?? 0, xFollowers);
+        const level = calculateLevel(player.xp ?? 0);
+
+        // Daily login XP check
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const isNewDay = player.lastLoginDate !== today;
+        const dailyXpBonus = isNewDay ? 25 : 0;
+        const notifications: { type: string; message: string }[] = isNewDay
+          ? [{ type: 'daily_login', message: '+25 XP — Daily Login Bonus' }]
+          : [];
+
         await db
           .update(players)
           .set({
@@ -42,9 +52,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             xFollowersVerifiedAt: new Date(),
             tier,
             level,
-            equippedWeapon: getBestWeapon(existing[0].mrr ?? 0),
+            equippedWeapon: getBestWeapon(player.mrr ?? 0),
             equippedArmor: getBestArmor(xFollowers),
             lastSeenAt: new Date(),
+            ...(isNewDay ? {
+              xp: (player.xp ?? 0) + dailyXpBonus,
+              lastLoginDate: today,
+              pendingNotifications: notifications,
+            } : {}),
           })
           .where(eq(players.xUserId, xUserId));
       } else {

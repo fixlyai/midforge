@@ -31,6 +31,8 @@ export const players = pgTable('players', {
   currentZone: text('current_zone').default('starter_village'),
   gold: integer('gold').default(0),
   seasonTitle: text('season_title'),
+  lastLoginDate: text('last_login_date'),
+  pendingNotifications: jsonb('pending_notifications').$type<{ type: string; message: string }[]>(),
   createdAt: timestamp('created_at').defaultNow(),
   lastSeenAt: timestamp('last_seen_at').defaultNow(),
 });

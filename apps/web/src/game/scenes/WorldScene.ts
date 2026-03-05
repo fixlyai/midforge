@@ -106,6 +106,10 @@ export class WorldScene extends Phaser.Scene {
   private joystick: any = null;
   private joyKeys: any = null;
   private mobileButtons: Phaser.GameObjects.GameObject[] = [];
+  private touchLeft = false;
+  private touchRight = false;
+  private touchUp = false;
+  private touchDown = false;
 
   // Spawn points from map
   private spawnDefault = { x: 624, y: 736 };
@@ -203,8 +207,45 @@ export class WorldScene extends Phaser.Scene {
     // ── Expanding world: fetch unlock status ────────────
     this.fetchUnlockStatus();
 
+    // ── Show pending notifications (daily login XP, etc.) ──
+    this.showPendingNotifications(playerData);
+
     this.connectMultiplayer(playerData);
     this.game.events.emit('world_ready');
+  }
+
+  private async showPendingNotifications(playerData: any) {
+    const notifications = playerData?.pendingNotifications as { type: string; message: string }[] | null;
+    if (!notifications || notifications.length === 0) return;
+
+    // Display each notification as floating text
+    let delay = 500;
+    for (const notif of notifications) {
+      this.time.delayedCall(delay, () => {
+        const txt = this.add.text(
+          this.player.x, this.player.y - 30,
+          notif.message,
+          { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#F39C12' }
+        ).setOrigin(0.5).setDepth(200);
+
+        this.tweens.add({
+          targets: txt,
+          y: txt.y - 40,
+          alpha: 0,
+          duration: 3000,
+          ease: 'Power2',
+          onComplete: () => txt.destroy(),
+        });
+      });
+      delay += 1000;
+    }
+
+    // Clear notifications on server
+    try {
+      await fetch('/api/player/clear-notifications', { method: 'POST' });
+    } catch (e) {
+      // non-critical, ignore
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -901,17 +942,17 @@ export class WorldScene extends Phaser.Scene {
   //  UPDATE LOOP
   // ═══════════════════════════════════════════════════════════
   update(_time: number, delta: number) {
-    if (!this.inputEnabled || this.introActive) return;
+    if (!this.inputEnabled || this.introActive || !this.player || !this.cursors) return;
 
     let vx = 0;
     let vy = 0;
     let moving = false;
     let direction = this.lastDirection;
 
-    const left = this.cursors.left.isDown || this.wasd.A.isDown || this.joyKeys?.left?.isDown;
-    const right = this.cursors.right.isDown || this.wasd.D.isDown || this.joyKeys?.right?.isDown;
-    const up = this.cursors.up.isDown || this.wasd.W.isDown || this.joyKeys?.up?.isDown;
-    const down = this.cursors.down.isDown || this.wasd.S.isDown || this.joyKeys?.down?.isDown;
+    const left  = this.cursors.left?.isDown  || this.wasd?.A?.isDown  || this.joyKeys?.left?.isDown  || this.touchLeft  || false;
+    const right = this.cursors.right?.isDown || this.wasd?.D?.isDown || this.joyKeys?.right?.isDown || this.touchRight || false;
+    const up    = this.cursors.up?.isDown    || this.wasd?.W?.isDown    || this.joyKeys?.up?.isDown    || this.touchUp    || false;
+    const down  = this.cursors.down?.isDown  || this.wasd?.S?.isDown  || this.joyKeys?.down?.isDown  || this.touchDown  || false;
 
     if (left) { vx = -PLAYER_SPEED; direction = 'left'; moving = true; }
     if (right) { vx = PLAYER_SPEED; direction = 'right'; moving = true; }
@@ -1065,23 +1106,28 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createFallbackTouch() {
-    // Simple tap-to-move as fallback if rex plugin fails
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (!this.inputEnabled || this.introActive) return;
-      // Only use left half of screen for movement
-      if (pointer.x < this.scale.width * 0.4) {
-        const dx = pointer.worldX - this.player.x;
-        const dy = pointer.worldY - this.player.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > 10) {
-          const body = this.player.body as Phaser.Physics.Arcade.Body;
-          body.setVelocity(
-            (dx / dist) * PLAYER_SPEED,
-            (dy / dist) * PLAYER_SPEED
-          );
-          this.time.delayedCall(300, () => body.setVelocity(0, 0));
-        }
+    // 8-direction touch input without rex plugin
+    let touchStartX = 0;
+    let touchStartY = 0;
+    const threshold = 20;
+
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (p.x < this.scale.width / 2) {
+        touchStartX = p.x;
+        touchStartY = p.y;
       }
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (!p.isDown || p.x > this.scale.width / 2) return;
+      const dx = p.x - touchStartX;
+      const dy = p.y - touchStartY;
+      this.touchLeft  = dx < -threshold;
+      this.touchRight = dx > threshold;
+      this.touchUp    = dy < -threshold;
+      this.touchDown  = dy > threshold;
+    });
+    this.input.on('pointerup', () => {
+      this.touchLeft = this.touchRight = this.touchUp = this.touchDown = false;
     });
   }
 

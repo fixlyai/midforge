@@ -95,6 +95,9 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
         render: {
           pixelArt: true,
           antialias: false,
+          antialiasGL: false,
+          roundPixels: true,
+          clearBeforeRender: true,
           powerPreference: 'high-performance',
         },
         fps: {

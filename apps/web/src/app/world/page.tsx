@@ -24,6 +24,7 @@ export default async function WorldPage() {
         xFollowers: player.xFollowers ?? 0,
         positionX: player.positionX ?? 100,
         positionY: player.positionY ?? 100,
+        pendingNotifications: player.pendingNotifications ?? [],
       }
     : {
         id: 'guest',

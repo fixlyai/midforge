@@ -50,8 +50,13 @@ export default async function LandingPage() {
         </div>
 
         <h1
-          className="font-pixel text-2xl sm:text-3xl md:text-4xl text-forge-amber leading-relaxed mb-6"
-          style={{ textShadow: '0 0 40px rgba(243,156,18,0.3)' }}
+          className="font-pixel text-forge-amber mb-6"
+          style={{
+            fontSize: 'clamp(28px, 5vw, 52px)',
+            letterSpacing: '0.04em',
+            lineHeight: '1.9',
+            textShadow: '0 0 40px rgba(243,156,18,0.3)',
+          }}
         >
           Your revenue is
           <br />
@@ -248,13 +253,13 @@ export default async function LandingPage() {
       {/* ═══════════ FOOTER ═══════════ */}
       <footer className="relative z-10 mt-16 sm:mt-20 mb-8 w-full max-w-[900px] px-4 text-center">
         <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
-          <a href="#" className="font-pixel text-[7px] text-forge-wheat/30 hover:text-forge-wheat/60 transition-colors">
+          <Link href="/privacy" className="font-pixel text-[7px] text-forge-wheat/30 hover:text-forge-wheat/60 transition-colors">
             Privacy Policy
-          </a>
+          </Link>
           <span className="font-pixel text-[7px] text-forge-wheat/20">·</span>
-          <a href="#" className="font-pixel text-[7px] text-forge-wheat/30 hover:text-forge-wheat/60 transition-colors">
+          <Link href="/terms" className="font-pixel text-[7px] text-forge-wheat/30 hover:text-forge-wheat/60 transition-colors">
             Terms
-          </a>
+          </Link>
           <span className="font-pixel text-[7px] text-forge-wheat/20">·</span>
           <a
             href="https://x.com/midforgegame"
@@ -270,7 +275,11 @@ export default async function LandingPage() {
           </a>
         </div>
         <p className="font-pixel text-[7px] sm:text-[8px] text-forge-wheat/30 tracking-widest">
-          Built on Neon · Powered by real revenue · Forged in Midgard
+          Built on Neon · Powered by{' '}
+          <a href="https://vercel.com" target="_blank" rel="noopener noreferrer" className="hover:text-forge-wheat/60 transition-colors">
+            Vercel
+          </a>
+          {' '}· Forged in Midgard
         </p>
         <p className="font-pixel text-[6px] text-forge-wheat/15 mt-2">
           © 2025 Midforge · Season 0
