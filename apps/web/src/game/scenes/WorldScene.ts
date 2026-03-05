@@ -445,18 +445,21 @@ export class WorldScene extends Phaser.Scene {
   // ═══════════════════════════════════════════════════════════
   //  COLLISION LAYER — create physics bodies from objects
   // ═══════════════════════════════════════════════════════════
-  // Collision objects to SKIP — decorations/forests should not block the player
+  // Collision objects to SKIP — these should not block the player at all
   private static readonly SKIP_COLLISION = new Set([
     'forest_nw', 'forest_ne', 'pond',
     'future_mines_gate', 'future_harbor_wall', 'future_academy_wall',
+    'arena_gate_w', 'arena_gate_e',
   ]);
 
-  // Collision objects to SHRINK — buildings should only block the actual structure, not the approach area
+  // Buildings: only block the back wall/roof, leaving entrance open for NPC approach
+  // Format: { dx, dy, dw, dh } — applied as offsets to original rect
   private static readonly SHRINK_COLLISION: Record<string, { dx: number; dy: number; dw: number; dh: number }> = {
-    blacksmith:    { dx: 16, dy: 16, dw: -48, dh: -48 },
-    marketplace:   { dx: 16, dy: 16, dw: -48, dh: -64 },
-    tavern:        { dx: 16, dy: 16, dw: -48, dh: -48 },
-    elder_house:   { dx: 16, dy: 16, dw: -48, dh: -48 },
+    blacksmith:    { dx: 8, dy: 0, dw: -16, dh: -80 },   // only top 48px of 128h
+    marketplace:   { dx: 8, dy: 0, dw: -16, dh: -128 },  // only top 64px of 192h
+    tavern:        { dx: 8, dy: 0, dw: -16, dh: -96 },   // only top 48px of 144h
+    elder_house:   { dx: 8, dy: 0, dw: -16, dh: -80 },   // only top 48px of 128h
+    castle_gate:   { dx: 16, dy: 0, dw: -32, dh: -48 },  // only top 64px of 112h
   };
 
   private renderCollisionLayer(map: TmjMap) {
@@ -860,8 +863,14 @@ export class WorldScene extends Phaser.Scene {
   // ═══════════════════════════════════════════════════════════
   //  MAP TRANSITION — check player overlap with transition zones
   // ═══════════════════════════════════════════════════════════
+  private lastTransitionTime = 0;
+
   private checkMapTransitions() {
     if (!this.player || this.transitionZones.length === 0) return;
+
+    // Cooldown: only trigger once every 3 seconds
+    const now = this.time.now;
+    if (now - this.lastTransitionTime < 3000) return;
 
     for (const { zone, targetMap } of this.transitionZones) {
       const zBody = zone.body as Phaser.Physics.Arcade.Body;
@@ -871,17 +880,16 @@ export class WorldScene extends Phaser.Scene {
         new Phaser.Geom.Rectangle(pBody.x, pBody.y, pBody.width, pBody.height),
         new Phaser.Geom.Rectangle(zBody.x, zBody.y, zBody.width, zBody.height)
       )) {
-        // Emit transition event — React layer or future system handles it
-        // Target map doesn't exist yet; show a toast message instead
-        this.game.events.emit('map_transition', { targetMap });
+        this.lastTransitionTime = now;
+        const displayName = targetMap.replace(/_/g, ' ');
 
-        // Brief visual feedback
-        this.cameras.main.flash(300, 13, 10, 30);
+        // Show typewriter dialogue instead of just flashing
         this.inputEnabled = false;
-        this.time.delayedCall(500, () => {
-          this.inputEnabled = true;
-        });
-        return; // Only process one transition per frame
+        this.showTypewriterDialogue(
+          [`The ${displayName} is being prepared... Come back soon.`],
+          () => { this.inputEnabled = true; }
+        );
+        return;
       }
     }
   }
@@ -1410,17 +1418,18 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    // For functional NPCs (arena, marketplace, inventory, quests) → emit to React panel
-    // For ambient NPCs → show dialogue via typewriter
-    if (eventName === 'npc_ambient' || eventName === 'npc_quest_giver') {
+    // NPCs with React panels (arena, marketplace, inventory) → emit to React
+    const REACT_PANEL_EVENTS = new Set(['npc_arena', 'npc_marketplace', 'npc_inventory']);
+    if (REACT_PANEL_EVENTS.has(eventName)) {
+      this.game.events.emit(eventName, { npcId, dialogue: fallbackDialogue });
+    } else {
+      // All other NPCs (ambient, tavern, intro, gate_guard, future, quest_giver) → typewriter
       if (fallbackDialogue) {
         this.inputEnabled = false;
         this.showTypewriterDialogue([fallbackDialogue], () => {
           this.inputEnabled = true;
         });
       }
-    } else {
-      this.game.events.emit(eventName, { npcId, dialogue: fallbackDialogue });
     }
   }
 
