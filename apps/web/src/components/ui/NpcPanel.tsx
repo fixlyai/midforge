@@ -56,49 +56,127 @@ export function QuestPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Panel title="Elder Forge — Quests" onClose={onClose}>
+    <Panel title="📜 Elder Forge — Quests" onClose={onClose}>
       {loading ? (
-        <p className="font-pixel text-[8px] text-forge-wheat/50 animate-pulse">Loading quests...</p>
+        <div style={{ textAlign: 'center', padding: 20 }}>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: '#F5DEB3', opacity: 0.5 }} className="animate-pulse">Loading quests...</div>
+        </div>
       ) : (
         <>
+          {/* Active Quests */}
           {quests.length > 0 && (
-            <div className="mb-4">
-              <p className="font-pixel text-[8px] text-forge-amber mb-2">ACTIVE QUESTS</p>
-              {quests.map((q) => (
-                <div key={q.id} className="forge-panel mb-2 p-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-pixel text-[8px] text-forge-wheat">
-                      {q.definition?.icon} {q.definition?.title ?? q.questId}
-                    </span>
-                    <span className={`font-pixel text-[7px] ${q.status === 'completed' ? 'text-forge-green' : 'text-forge-amber'}`}>
-                      {q.status === 'completed' ? 'DONE' : `${q.progress ?? 0}/${q.target}`}
-                    </span>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <div style={{ width: 3, height: 14, background: '#F39C12', borderRadius: 1 }} />
+                <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#F39C12', letterSpacing: 1 }}>ACTIVE QUESTS ({quests.length})</span>
+              </div>
+              {quests.map((q) => {
+                const pct = q.target > 0 ? Math.min(1, (q.progress ?? 0) / q.target) : 0;
+                const done = q.status === 'completed';
+                return (
+                  <div key={q.id} style={{
+                    background: done ? '#27AE6015' : '#0d0a1eCC',
+                    border: `1px solid ${done ? '#27AE6040' : '#F39C1230'}`,
+                    borderRadius: 6, padding: '8px 10px', marginBottom: 6,
+                    boxShadow: '2px 2px 0px rgba(0,0,0,0.3)',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#F5DEB3' }}>
+                        {q.definition?.icon} {q.definition?.title ?? q.questId}
+                      </span>
+                      <span style={{
+                        fontFamily: '"Press Start 2P", monospace', fontSize: 6,
+                        color: done ? '#27AE60' : '#F39C12',
+                        background: done ? '#27AE6020' : '#F39C1215',
+                        padding: '2px 6px', borderRadius: 3,
+                      }}>
+                        {done ? '✓ DONE' : `${q.progress ?? 0}/${q.target}`}
+                      </span>
+                    </div>
+                    <p style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#F5DEB380', marginTop: 4, lineHeight: '1.6' }}>
+                      {q.definition?.description}
+                    </p>
+                    {!done && (
+                      <div style={{ marginTop: 6, height: 4, background: '#ffffff10', borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{
+                          width: `${pct * 100}%`, height: '100%',
+                          background: pct >= 1 ? '#27AE60' : 'linear-gradient(90deg, #F39C12, #E67E22)',
+                          borderRadius: 2, transition: 'width 0.3s',
+                        }} />
+                      </div>
+                    )}
+                    {done && q.definition && (
+                      <div style={{ marginTop: 6, fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#27AE60' }}>
+                        +{q.definition.rewardXp} XP · +{q.definition.rewardGold}G
+                      </div>
+                    )}
                   </div>
-                  <p className="font-pixel text-[7px] text-forge-wheat/50 mt-1">{q.definition?.description}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+
+          {/* Available Quests */}
           {available.length > 0 && (
             <div>
-              <p className="font-pixel text-[8px] text-forge-amber mb-2">AVAILABLE</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <div style={{ width: 3, height: 14, background: '#4A90D9', borderRadius: 1 }} />
+                <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#4A90D9', letterSpacing: 1 }}>AVAILABLE ({available.length})</span>
+              </div>
               {available.map((a) => (
-                <div key={a.id} className="forge-panel mb-2 p-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-pixel text-[8px] text-forge-wheat">{a.icon} {a.title}</span>
-                    <button onClick={() => acceptQuest(a.id)} className="forge-btn text-[7px] py-1 px-2">Accept</button>
+                <div key={a.id} style={{
+                  background: '#0d0a1eCC',
+                  border: '1px solid #4A90D930',
+                  borderRadius: 6, padding: '8px 10px', marginBottom: 6,
+                  boxShadow: '2px 2px 0px rgba(0,0,0,0.3)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#F5DEB3' }}>
+                      {a.icon} {a.title}
+                    </span>
+                    <button
+                      onClick={() => acceptQuest(a.id)}
+                      style={{
+                        fontFamily: '"Press Start 2P", monospace', fontSize: 6,
+                        color: '#0d0a1e', background: '#4A90D9',
+                        border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer',
+                        boxShadow: '2px 2px 0px rgba(0,0,0,0.3)',
+                      }}
+                    >
+                      ACCEPT
+                    </button>
                   </div>
-                  <p className="font-pixel text-[7px] text-forge-wheat/50 mt-1">{a.description}</p>
-                  <p className="font-pixel text-[7px] text-forge-green mt-1">
-                    +{a.rewardXp} XP · +{a.rewardGold}G
-                    {a.rewardItemId ? ` · ${a.rewardItemId}` : ''}
+                  <p style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#F5DEB380', marginTop: 4, lineHeight: '1.6' }}>
+                    {a.description}
                   </p>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                    <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#4A90D9', background: '#4A90D915', padding: '2px 5px', borderRadius: 2 }}>
+                      +{a.rewardXp} XP
+                    </span>
+                    <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#F39C12', background: '#F39C1215', padding: '2px 5px', borderRadius: 2 }}>
+                      +{a.rewardGold}G
+                    </span>
+                    {a.rewardItemId && (
+                      <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#7B68EE', background: '#7B68EE15', padding: '2px 5px', borderRadius: 2 }}>
+                        🎁 {a.rewardItemId}
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
+
           {quests.length === 0 && available.length === 0 && (
-            <p className="font-pixel text-[8px] text-forge-wheat/50">No quests available right now.</p>
+            <div style={{ textAlign: 'center', padding: 20 }}>
+              <div style={{ fontSize: 20, marginBottom: 8 }}>📜</div>
+              <p style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#F5DEB3', opacity: 0.5 }}>
+                No quests available right now.
+              </p>
+              <p style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#F5DEB3', opacity: 0.3, marginTop: 6 }}>
+                Talk to NPCs around the village!
+              </p>
+            </div>
           )}
         </>
       )}
