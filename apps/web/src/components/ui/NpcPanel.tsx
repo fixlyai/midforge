@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ─── Quest Panel ───
 interface QuestDef {
@@ -175,7 +175,7 @@ export function InventoryPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ─── Arena Fight Scene (visual combat) ───
+// ─── Arena Types ───
 interface FightRound {
   round: number;
   cHp: number;
@@ -200,221 +200,351 @@ const TIER_COLORS: Record<string, string> = {
   merchant: '#7B68EE', warrior: '#E74C3C', legend: '#F39C12',
 };
 
-function ArenaFightScene({
-  result,
-  playerName,
-  onDone,
+const TIER_LABELS: Record<string, string> = {
+  villager: 'VILLAGER', apprentice: 'APPRENTICE',
+  merchant: 'MERCHANT', warrior: 'WARRIOR', legend: 'LEGEND',
+};
+
+// ─── Pixel Sprite (CSS-only character) ───
+function PixelSprite({
+  color, flipped = false, hit = false, dead = false, tier = 'villager',
 }: {
-  result: GhostFightResult;
-  playerName: string;
-  onDone: () => void;
+  color: string; flipped?: boolean; hit?: boolean; dead?: boolean; tier?: string;
+}) {
+  const glow = hit ? `0 0 24px ${color}, 0 0 48px ${color}` : `0 0 8px ${color}40`;
+  return (
+    <div style={{
+      width: 48, height: 64, position: 'relative',
+      transform: `${flipped ? 'scaleX(-1)' : ''} ${dead ? 'rotate(90deg)' : ''}`,
+      opacity: dead ? 0.3 : 1,
+      transition: 'opacity 0.4s, transform 0.4s',
+      imageRendering: 'pixelated',
+      filter: hit ? `brightness(3) drop-shadow(0 0 8px ${color})` : 'none',
+    }}>
+      <div style={{ position: 'absolute', top: 0, left: 12, width: 24, height: 20, backgroundColor: color, boxShadow: glow, borderRadius: '3px 3px 0 0' }} />
+      <div style={{ position: 'absolute', top: 6, left: 16, width: 4, height: 4, backgroundColor: '#000', borderRadius: 1 }} />
+      <div style={{ position: 'absolute', top: 6, left: 28, width: 4, height: 4, backgroundColor: '#000', borderRadius: 1 }} />
+      <div style={{ position: 'absolute', top: 20, left: 10, width: 28, height: 24, backgroundColor: `${color}CC`, boxShadow: glow }} />
+      <div style={{ position: 'absolute', top: 32, left: 10, width: 28, height: 3, backgroundColor: '#00000040' }} />
+      <div style={{ position: 'absolute', top: 22, left: 2, width: 8, height: 18, backgroundColor: color, borderRadius: '0 0 3px 3px', boxShadow: glow }} />
+      <div style={{ position: 'absolute', top: 22, right: 2, width: 8, height: 18, backgroundColor: color, borderRadius: '0 0 3px 3px', boxShadow: glow }} />
+      <div style={{ position: 'absolute', top: 44, left: 11, width: 10, height: 20, backgroundColor: `${color}AA`, borderRadius: '0 0 3px 3px' }} />
+      <div style={{ position: 'absolute', top: 44, right: 11, width: 10, height: 20, backgroundColor: `${color}AA`, borderRadius: '0 0 3px 3px' }} />
+      {(tier === 'warrior' || tier === 'legend') && (
+        <div style={{ position: 'absolute', top: 10, right: -8, width: 4, height: 36, backgroundColor: tier === 'legend' ? '#FFD700' : '#888', borderRadius: 2, boxShadow: tier === 'legend' ? '0 0 8px #FFD700' : 'none' }} />
+      )}
+    </div>
+  );
+}
+
+// ─── Floating Damage Number ───
+function DamageNumber({ damage, x, critical }: { damage: number; x: 'left' | 'right'; critical?: boolean }) {
+  return (
+    <div style={{
+      position: 'absolute', top: 0, [x === 'left' ? 'left' : 'right']: 16,
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: critical ? 14 : 11,
+      color: critical ? '#FFD700' : '#FF4444',
+      textShadow: `0 0 8px ${critical ? '#FFD700' : '#FF0000'}, 2px 2px 0 #000`,
+      animation: 'floatUp 0.8s ease-out forwards',
+      pointerEvents: 'none', zIndex: 50, whiteSpace: 'nowrap',
+    }}>
+      {critical ? '💥 ' : ''}-{damage}
+    </div>
+  );
+}
+
+// ─── Segmented HP Bar ───
+function HPBar({ current, max, name, color }: { current: number; max: number; name: string; color: string }) {
+  const pct = Math.max(0, Math.min(1, current / max));
+  const barColor = pct > 0.5 ? '#27AE60' : pct > 0.25 ? '#F39C12' : '#E74C3C';
+  const segments = 10;
+  return (
+    <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+        <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#fff', textShadow: '1px 1px 0 #000', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+        <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: barColor }}>{Math.round(current)}</span>
+      </div>
+      <div style={{ height: 8, background: '#0a0818', border: `1px solid ${color}40`, borderRadius: 2, overflow: 'hidden', display: 'flex', gap: 1, padding: 1 }}>
+        {Array.from({ length: segments }).map((_, i) => (
+          <div key={i} style={{ flex: 1, height: '100%', backgroundColor: i < Math.round(pct * segments) ? barColor : '#1a0a2e', transition: 'background-color 0.3s', borderRadius: 1 }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Arena Background ───
+function ArenaBackground({ flash }: { flash: 'left' | 'right' | null }) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 8 }}>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%', background: 'repeating-linear-gradient(90deg, #1a1225 0px, #1a1225 31px, #221530 32px)', borderTop: '2px solid #F39C1220' }} />
+      <div style={{ position: 'absolute', top: 12, left: 16, fontSize: 14 }}>{'🔥'}</div>
+      <div style={{ position: 'absolute', top: 12, right: 16, fontSize: 14 }}>{'🔥'}</div>
+      {flash && (
+        <div style={{ position: 'absolute', inset: 0, backgroundColor: flash === 'left' ? '#FF000020' : '#F39C1220', animation: 'flashFade 0.15s ease-out forwards', pointerEvents: 'none' }} />
+      )}
+      <div style={{ position: 'absolute', inset: 0, opacity: 0.03, background: 'repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 1px, transparent 3px)', pointerEvents: 'none' }} />
+    </div>
+  );
+}
+
+// ─── Arena Fight Scene ───
+function ArenaFightScene({
+  result, playerName, playerTier = 'villager', onDone,
+}: {
+  result: GhostFightResult; playerName: string; playerTier?: string; onDone: () => void;
 }) {
   const log = result.fightLog;
-  const maxCHp = log.length > 0 ? (log[0].cHp + log[0].cDmg + log[0].dDmg) : 100;
-  const maxDHp = maxCHp;
+  const maxHp = log.length > 0 ? Math.round(log[0].cHp + log[0].cDmg * 2) : 100;
 
+  const [phase, setPhase] = useState<'intro' | 'fight' | 'result'>('intro');
   const [roundIdx, setRoundIdx] = useState(-1);
-  const [cHp, setCHp] = useState(maxCHp);
-  const [dHp, setDHp] = useState(maxDHp);
-  const [lastCDmg, setLastCDmg] = useState(0);
-  const [lastDDmg, setLastDDmg] = useState(0);
-  const [shake, setShake] = useState<'left' | 'right' | null>(null);
-  const [flash, setFlash] = useState<'left' | 'right' | null>(null);
-  const [done, setDone] = useState(false);
-  const [prompt, setPrompt] = useState('SPACE to attack!');
+  const [cHp, setCHp] = useState(maxHp);
+  const [dHp, setDHp] = useState(maxHp);
+  const [dmgLeft, setDmgLeft] = useState<number | null>(null);
+  const [dmgRight, setDmgRight] = useState<number | null>(null);
+  const [hitLeft, setHitLeft] = useState(false);
+  const [hitRight, setHitRight] = useState(false);
+  const [shakeLeft, setShakeLeft] = useState(false);
+  const [shakeRight, setShakeRight] = useState(false);
+  const [flashBg, setFlashBg] = useState<'left' | 'right' | null>(null);
+  const [canAttack, setCanAttack] = useState(false);
+  const [intro, setIntro] = useState(true);
+  const [playerEntered, setPlayerEntered] = useState(false);
+  const [ghostEntered, setGhostEntered] = useState(false);
+  const [vsVisible, setVsVisible] = useState(false);
+  const busy = useRef(false);
 
-  const advanceRound = useCallback(() => {
+  const ghostColor = TIER_COLORS[result.ghost.tier] || '#8B7355';
+  const playerColor = TIER_COLORS[playerTier] || '#4A90D9';
+  const isDead = (hp: number) => hp <= 0;
+
+  // Intro sequence
+  useEffect(() => {
+    const t1 = setTimeout(() => setPlayerEntered(true), 200);
+    const t2 = setTimeout(() => setGhostEntered(true), 600);
+    const t3 = setTimeout(() => setVsVisible(true), 1100);
+    const t4 = setTimeout(() => { setIntro(false); setPhase('fight'); setCanAttack(true); }, 2200);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, []);
+
+  // Round execution
+  const executeRound = useCallback(() => {
+    if (busy.current || !canAttack) return;
     const next = roundIdx + 1;
-    if (next >= log.length) {
-      setDone(true);
-      setPrompt('');
-      return;
-    }
-
-    const r = log[next];
+    if (next >= log.length) { setPhase('result'); return; }
+    busy.current = true;
+    setCanAttack(false);
     setRoundIdx(next);
-    setPrompt('');
+    const r = log[next];
 
-    // Player attacks first
-    setFlash('right');
-    setShake('right');
-    setLastCDmg(r.cDmg);
-    setLastDDmg(0);
-
+    // Player attacks ghost
+    setHitLeft(true);
+    setFlashBg('right');
     setTimeout(() => {
+      setHitLeft(false);
+      setShakeRight(true);
+      setDmgRight(r.cDmg);
       setDHp(Math.max(0, r.dHp));
-      setShake(null);
-      setFlash(null);
-
-      // Foe attacks back (if still alive)
-      if (r.dHp > 0 && r.dDmg > 0) {
+      setTimeout(() => {
+        setShakeRight(false); setDmgRight(null); setFlashBg(null);
+        if (isDead(r.dHp)) {
+          setTimeout(() => { setPhase('result'); busy.current = false; }, 600);
+          return;
+        }
+        // Ghost retaliates
         setTimeout(() => {
-          setFlash('left');
-          setShake('left');
-          setLastDDmg(r.dDmg);
-
+          setHitRight(true);
+          setFlashBg('left');
           setTimeout(() => {
+            setHitRight(false);
+            setShakeLeft(true);
+            setDmgLeft(r.dDmg);
             setCHp(Math.max(0, r.cHp));
-            setShake(null);
-            setFlash(null);
-
             setTimeout(() => {
-              if (next + 1 >= log.length) {
-                setDone(true);
-                setPrompt('');
+              setShakeLeft(false); setDmgLeft(null); setFlashBg(null);
+              if (isDead(r.cHp)) {
+                setTimeout(() => { setPhase('result'); busy.current = false; }, 600);
               } else {
-                setPrompt('SPACE to attack!');
+                setCanAttack(true); busy.current = false;
               }
-            }, 200);
-          }, 300);
+            }, 350);
+          }, 200);
         }, 400);
-      } else {
-        setDone(true);
-        setPrompt('');
-      }
-    }, 300);
-  }, [roundIdx, log]);
+      }, 300);
+    }, 250);
+  }, [roundIdx, log, canAttack, maxHp]);
 
-  // Keyboard listener
+  // Keyboard + tap
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.code === 'Space' || e.code === 'Enter') {
-        e.preventDefault();
-        if (done) {
-          onDone();
-        } else if (prompt) {
-          advanceRound();
-        }
-      }
+      if ((e.code === 'Space' || e.code === 'Enter') && phase === 'fight') { e.preventDefault(); executeRound(); }
+      if ((e.code === 'Space' || e.code === 'Enter') && phase === 'result') { onDone(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [advanceRound, done, prompt, onDone]);
-
-  const cPct = Math.max(0, cHp / maxCHp);
-  const dPct = Math.max(0, dHp / maxDHp);
-  const ghostColor = TIER_COLORS[result.ghost.tier] || '#8B7355';
+  }, [executeRound, phase, onDone]);
 
   return (
-    <div className="relative">
-      {/* Arena stage */}
-      <div className="forge-panel p-3 mb-3 relative overflow-hidden" style={{ minHeight: 180 }}>
-        {/* Background */}
-        <div className="absolute inset-0 opacity-20" style={{
-          background: 'radial-gradient(ellipse at center, #F39C12 0%, transparent 70%)',
-        }} />
+    <>
+      <style>{`
+        @keyframes floatUp { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-40px); opacity: 0; } }
+        @keyframes flashFade { 0% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes slideInLeft { from { transform: translateX(-120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes slideInRight { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes vsPopIn { 0% { transform: scale(0) rotate(-10deg); opacity: 0; } 60% { transform: scale(1.3) rotate(4deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+        @keyframes shakeX { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-8px); } 40% { transform: translateX(8px); } 60% { transform: translateX(-6px); } 80% { transform: translateX(6px); } }
+        @keyframes attackLunge { 0% { transform: translateX(0); } 40% { transform: translateX(20px); } 100% { transform: translateX(0); } }
+        @keyframes attackLungeR { 0% { transform: scaleX(-1) translateX(0); } 40% { transform: scaleX(-1) translateX(20px); } 100% { transform: scaleX(-1) translateX(0); } }
+        @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 8px #F39C1240; } 50% { box-shadow: 0 0 24px #F39C12; } }
+      `}</style>
 
-        {/* Round counter */}
-        <div className="text-center mb-2 relative z-10">
-          <span className="font-pixel text-[7px] text-forge-wheat/50">
-            {done ? 'FIGHT OVER' : roundIdx < 0 ? 'READY?' : `ROUND ${roundIdx + 1}`}
-          </span>
-        </div>
+      <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '2px solid #F39C1240', background: '#0d0a1e', minHeight: 260, marginBottom: 12 }}>
+        <ArenaBackground flash={flashBg} />
 
-        {/* Fighters */}
-        <div className="flex justify-between items-end relative z-10" style={{ minHeight: 100 }}>
-          {/* Player (left) */}
-          <div className={`text-center transition-transform duration-150 ${shake === 'left' ? 'translate-x-2' : ''}`}>
-            <div
-              className={`w-12 h-16 mx-auto mb-1 rounded transition-all duration-150 ${flash === 'left' ? 'brightness-200' : ''}`}
-              style={{
-                backgroundColor: '#4A90D9',
-                boxShadow: flash === 'right' ? '0 0 12px #F39C12' : 'none',
-                imageRendering: 'pixelated',
-              }}
-            />
-            <p className="font-pixel text-[6px] text-forge-wheat truncate max-w-[60px]">
-              @{playerName}
-            </p>
-            {/* HP bar */}
-            <div className="w-14 h-2 mx-auto mt-1 bg-[#1a0a2e] rounded-sm overflow-hidden border border-forge-amber/30">
-              <div
-                className="h-full transition-all duration-500 ease-out"
-                style={{
-                  width: `${cPct * 100}%`,
-                  backgroundColor: cPct > 0.5 ? '#27AE60' : cPct > 0.2 ? '#F39C12' : '#E74C3C',
-                }}
-              />
-            </div>
-            <p className="font-pixel text-[5px] text-forge-wheat/40 mt-0.5">{Math.round(cHp)} HP</p>
-            {/* Damage taken */}
-            {lastDDmg > 0 && shake === 'left' && (
-              <p className="font-pixel text-[8px] text-forge-red animate-bounce absolute -top-2 left-4">
-                -{Math.round(lastDDmg)}
-              </p>
-            )}
-          </div>
-
-          {/* VS */}
-          <div className="font-pixel text-[12px] text-forge-red self-center">
-            ⚔
-          </div>
-
-          {/* Ghost opponent (right) */}
-          <div className={`text-center transition-transform duration-150 ${shake === 'right' ? '-translate-x-2' : ''}`}>
-            <div
-              className={`w-12 h-16 mx-auto mb-1 rounded transition-all duration-150 ${flash === 'right' ? 'brightness-200' : ''}`}
-              style={{
-                backgroundColor: ghostColor,
-                boxShadow: flash === 'left' ? '0 0 12px #F39C12' : 'none',
-                imageRendering: 'pixelated',
-                opacity: 0.8,
-              }}
-            />
-            <p className="font-pixel text-[6px] text-forge-wheat/70 truncate max-w-[60px]">
-              {result.ghost.username}
-            </p>
-            {/* HP bar */}
-            <div className="w-14 h-2 mx-auto mt-1 bg-[#1a0a2e] rounded-sm overflow-hidden border border-forge-amber/30">
-              <div
-                className="h-full transition-all duration-500 ease-out"
-                style={{
-                  width: `${dPct * 100}%`,
-                  backgroundColor: dPct > 0.5 ? '#27AE60' : dPct > 0.2 ? '#F39C12' : '#E74C3C',
-                }}
-              />
-            </div>
-            <p className="font-pixel text-[5px] text-forge-wheat/40 mt-0.5">{Math.round(dHp)} HP</p>
-            {/* Damage taken */}
-            {lastCDmg > 0 && shake === 'right' && (
-              <p className="font-pixel text-[8px] text-forge-red animate-bounce absolute -top-2 right-4">
-                -{Math.round(lastCDmg)}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Attack prompt */}
-        {prompt && !done && (
-          <div className="text-center mt-3 relative z-10">
-            <button
-              onClick={advanceRound}
-              className="forge-btn text-[8px] px-6 py-2 animate-pulse"
-            >
-              {prompt}
-            </button>
+        {/* VS Intro overlay */}
+        {intro && vsVisible && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d0a1eDD' }}>
+            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 28, color: '#F39C12', textShadow: '0 0 24px #F39C12, 3px 3px 0 #000', animation: 'vsPopIn 0.4s ease-out forwards' }}>VS</span>
           </div>
         )}
+
+        <div style={{ position: 'relative', zIndex: 10, padding: '16px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* HP Bars */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}><HPBar current={cHp} max={maxHp} name={`@${playerName}`} color={playerColor} /></div>
+            <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: '#F39C12', paddingBottom: 2 }}>\u2694</div>
+            <div style={{ flex: 1 }}><HPBar current={dHp} max={maxHp} name={result.ghost.username} color={ghostColor} /></div>
+          </div>
+
+          {/* Sprites */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', minHeight: 100, padding: '4px 12px', position: 'relative' }}>
+            {/* Player */}
+            <div style={{ position: 'relative', animation: playerEntered ? (hitLeft ? 'attackLunge 0.4s ease-in-out' : shakeLeft ? 'shakeX 0.4s ease-in-out' : 'none') : 'slideInLeft 0.4s ease-out forwards' }}>
+              <PixelSprite color={playerColor} tier={playerTier} hit={hitLeft} dead={isDead(cHp)} />
+              {dmgLeft !== null && <DamageNumber damage={dmgLeft} x="left" />}
+              <div style={{ textAlign: 'center', marginTop: 4, fontFamily: '"Press Start 2P", monospace', fontSize: 5, color: playerColor, textShadow: '1px 1px 0 #000' }}>{TIER_LABELS[playerTier] ?? 'VILLAGER'}</div>
+            </div>
+
+            {/* Center */}
+            <div style={{ textAlign: 'center' }}>
+              {phase === 'fight' && <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#ffffff40', marginBottom: 4 }}>{roundIdx < 0 ? 'READY' : `RND ${roundIdx + 1}`}</div>}
+              <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 5, color: '#ffffff20' }}>{'👻'} GHOST</div>
+            </div>
+
+            {/* Ghost */}
+            <div style={{ position: 'relative', animation: ghostEntered ? (hitRight ? 'attackLungeR 0.4s ease-in-out' : shakeRight ? 'shakeX 0.4s ease-in-out' : 'none') : 'slideInRight 0.4s ease-out forwards' }}>
+              <PixelSprite color={ghostColor} flipped tier={result.ghost.tier} hit={hitRight} dead={isDead(dHp)} />
+              {dmgRight !== null && <DamageNumber damage={dmgRight} x="right" />}
+              <div style={{ textAlign: 'center', marginTop: 4, fontFamily: '"Press Start 2P", monospace', fontSize: 5, color: ghostColor, textShadow: '1px 1px 0 #000' }}>{TIER_LABELS[result.ghost.tier] ?? 'VILLAGER'}</div>
+            </div>
+          </div>
+
+          {/* Attack button */}
+          {phase === 'fight' && (
+            <div style={{ textAlign: 'center', paddingTop: 4 }}>
+              <button
+                onClick={executeRound}
+                disabled={!canAttack}
+                style={{
+                  fontFamily: '"Press Start 2P", monospace', fontSize: 9,
+                  padding: '10px 28px',
+                  background: canAttack ? 'linear-gradient(180deg, #F39C12 0%, #E67E22 100%)' : '#2a1a4e',
+                  color: canAttack ? '#000' : '#ffffff30',
+                  border: `2px solid ${canAttack ? '#F39C12' : '#2a1a4e'}`,
+                  borderRadius: 4, cursor: canAttack ? 'pointer' : 'default',
+                  animation: canAttack ? 'pulseGlow 1.2s infinite' : 'none',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {canAttack ? '\u2694 ATTACK' : '...'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Fight result (shown when done) */}
-      {done && (
-        <div className={`text-center py-3 mb-3 rounded ${result.playerWon ? 'bg-forge-green/10' : 'bg-forge-red/10'}`}>
-          <p className={`font-pixel text-[12px] ${result.playerWon ? 'text-forge-green' : 'text-forge-red'}`}>
-            {result.playerWon ? '🏆 VICTORY' : '💀 DEFEATED'}
-          </p>
-          <p className="font-pixel text-[7px] text-forge-wheat/60 mt-1">
-            vs {result.ghost.username} (Lv{result.ghost.level})
-          </p>
-          <p className="font-pixel text-[9px] text-forge-amber mt-2">
-            +{result.xpReward} XP{result.goldReward > 0 ? ` · +${result.goldReward}G` : ''}
-          </p>
-          {result.evolved && (
-            <p className="font-pixel text-[9px] text-forge-amber mt-1 animate-pulse">✨ FORM EVOLVED</p>
+      {/* Result screen */}
+      {phase === 'result' && <ResultScreen result={result} onDone={onDone} />}
+    </>
+  );
+}
+
+// ─── Result Screen ───
+function ResultScreen({ result, onDone }: { result: GhostFightResult; onDone: () => void }) {
+  const [visible, setVisible] = useState(false);
+  const [showRewards, setShowRewards] = useState(false);
+  const [showEvo, setShowEvo] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setVisible(true), 100);
+    const t2 = setTimeout(() => setShowRewards(true), 700);
+    const t3 = result.evolved ? setTimeout(() => setShowEvo(true), 1400) : null;
+    return () => { clearTimeout(t1); clearTimeout(t2); if (t3) clearTimeout(t3); };
+  }, [result.evolved]);
+
+  const shareToX = () => {
+    const text = `${result.shareCard.title}\n${result.shareCard.subtitle}\n\nmidforgegame.com`;
+    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  return (
+    <div style={{
+      borderRadius: 8, overflow: 'hidden',
+      border: `2px solid ${result.playerWon ? '#27AE6060' : '#E74C3C60'}`,
+      background: result.playerWon ? '#0a1f0e' : '#1f0a0a',
+      padding: '20px 16px', textAlign: 'center',
+      opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(16px)',
+      transition: 'opacity 0.4s, transform 0.4s',
+    }}>
+      <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 20, color: result.playerWon ? '#27AE60' : '#E74C3C', textShadow: `0 0 20px ${result.playerWon ? '#27AE60' : '#E74C3C'}, 3px 3px 0 #000`, marginBottom: 8, letterSpacing: 2 }}>
+        {result.playerWon ? '\u{1F3C6} VICTORY!' : '\u{1F480} DEFEATED'}
+      </div>
+      <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#ffffff50', marginBottom: 16 }}>
+        vs {result.ghost.username} \u00B7 Lv{result.ghost.level} {result.ghost.tier.toUpperCase()}
+      </div>
+
+      {showRewards && (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 16, animation: 'vsPopIn 0.3s ease-out forwards' }}>
+          <div style={{ background: '#F39C1220', border: '1px solid #F39C1260', borderRadius: 20, padding: '6px 14px', fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: '#F39C12' }}>
+            +{result.xpReward} XP
+          </div>
+          {result.goldReward > 0 && (
+            <div style={{ background: '#FFD70020', border: '1px solid #FFD70060', borderRadius: 20, padding: '6px 14px', fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: '#FFD700' }}>
+              +{result.goldReward}G
+            </div>
           )}
-          <p className="font-pixel text-[6px] text-forge-wheat/30 mt-2">SPACE to continue</p>
         </div>
       )}
+
+      {showEvo && result.evolved && (
+        <div style={{ background: 'linear-gradient(90deg, #F39C1220, #FFD70040, #F39C1220)', border: '2px solid #F39C12', borderRadius: 8, padding: '10px 16px', marginBottom: 16, animation: 'vsPopIn 0.4s ease-out forwards' }}>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: '#FFD700', textShadow: '0 0 12px #FFD700', animation: 'pulseGlow 0.8s infinite' }}>
+            \u2728 FORM EVOLVED!
+          </div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#F39C12', marginTop: 6 }}>
+            Your hero has grown stronger
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onDone} style={{ flex: 1, fontFamily: '"Press Start 2P", monospace', fontSize: 8, padding: '10px 0', background: 'linear-gradient(180deg, #F39C12, #E67E22)', color: '#000', border: '2px solid #F39C12', borderRadius: 4, cursor: 'pointer' }}>
+          FIGHT AGAIN
+        </button>
+        <button onClick={shareToX} style={{ flex: 1, fontFamily: '"Press Start 2P", monospace', fontSize: 7, padding: '10px 0', background: '#1DA1F220', color: '#1DA1F2', border: '1px solid #1DA1F240', borderRadius: 4, cursor: 'pointer' }}>
+          SHARE TO X
+        </button>
+      </div>
+      <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#ffffff20', marginTop: 12 }}>
+        SPACE / ENTER to continue
+      </div>
+
+      <style>{`
+        @keyframes vsPopIn { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 8px #F39C1240; } 50% { box-shadow: 0 0 20px #F39C12; } }
+      `}</style>
     </div>
   );
 }
@@ -423,103 +553,70 @@ function ArenaFightScene({
 export function ArenaPanel({ onClose }: { onClose: () => void }) {
   const [fighting, setFighting] = useState(false);
   const [result, setResult] = useState<GhostFightResult | null>(null);
-  const [showScene, setShowScene] = useState(false);
-  const [showResult, setShowResult] = useState(false);
+  const [playerTier, setPlayerTier] = useState('villager');
 
-  const fightGhost = async () => {
+  const fightGhost = useCallback(async () => {
     setFighting(true);
     setResult(null);
-    setShowScene(false);
-    setShowResult(false);
     try {
       const res = await fetch('/api/arena/ghost', { method: 'POST' });
-      if (!res.ok) {
-        setFighting(false);
-        return;
-      }
+      if (!res.ok) throw new Error('Fight failed');
       const data = await res.json();
       setResult(data.fight);
-      setShowScene(true);
+      if (data.playerTier) setPlayerTier(data.playerTier);
     } catch {
       // ignore
     }
     setFighting(false);
-  };
-
-  const shareToX = () => {
-    if (!result) return;
-    const text = `${result.shareCard.title}\n${result.shareCard.subtitle}\n\nPlay at midforgegame.com`;
-    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
-  };
+  }, []);
 
   return (
-    <Panel title="Valkyra — Arena" onClose={onClose}>
-      {/* Visual fight scene */}
-      {showScene && result && !showResult && (
+    <Panel title="\u2694 Valkyra \u2014 Arena" onClose={onClose}>
+      {/* Active fight scene */}
+      {result && !fighting && (
         <ArenaFightScene
           result={result}
           playerName="You"
-          onDone={() => { setShowScene(false); setShowResult(true); }}
+          playerTier={playerTier}
+          onDone={() => { setResult(null); fightGhost(); }}
         />
       )}
 
-      {/* Pre-fight / post-fight */}
-      {!showScene && (
-        <div className="forge-panel p-3 mb-4">
-          <p className="font-pixel text-[9px] text-forge-red mb-2">⚔️ SOLO ARENA</p>
-
-          {!showResult ? (
-            <>
-              <p className="font-pixel text-[7px] text-forge-wheat/60 mb-3">
-                Fight AI opponents to earn XP and gold. Press SPACE to attack each round.
-              </p>
-              <button
-                onClick={fightGhost}
-                disabled={fighting}
-                className="forge-btn text-[8px] w-full"
-              >
-                {fighting ? 'FINDING OPPONENT...' : 'FIGHT GHOST OPPONENT'}
-              </button>
-            </>
-          ) : result && (
-            <>
-              <div className={`text-center py-2 mb-3 rounded ${result.playerWon ? 'bg-forge-green/10' : 'bg-forge-red/10'}`}>
-                <p className={`font-pixel text-[10px] ${result.playerWon ? 'text-forge-green' : 'text-forge-red'}`}>
-                  {result.playerWon ? '🏆 VICTORY' : '💀 DEFEATED'}
-                </p>
-                <p className="font-pixel text-[7px] text-forge-wheat/60 mt-1">
-                  vs {result.ghost.username} (Lv{result.ghost.level})
-                </p>
-                <p className="font-pixel text-[8px] text-forge-amber mt-1">
-                  +{result.xpReward} XP{result.goldReward > 0 ? ` · +${result.goldReward}G` : ''}
-                </p>
-                {result.evolved && (
-                  <p className="font-pixel text-[8px] text-forge-amber mt-1 animate-pulse">✨ FORM EVOLVED</p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => { setShowResult(false); fightGhost(); }} disabled={fighting} className="forge-btn text-[7px] flex-1">
-                  {fighting ? 'FINDING...' : 'FIGHT AGAIN'}
-                </button>
-                <button onClick={shareToX} className="forge-btn text-[7px] flex-1 bg-[#1DA1F2]/20">
-                  SHARE TO X
-                </button>
-              </div>
-            </>
-          )}
+      {/* Pre-fight screen */}
+      {!result && (
+        <div style={{ background: '#0a0818', border: '1px solid #F39C1230', borderRadius: 8, padding: 16, marginBottom: 12 }}>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: '#E74C3C', marginBottom: 8 }}>\u2694 SOLO ARENA</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#ffffff50', lineHeight: 1.8, marginBottom: 16 }}>
+            Fight AI ghost opponents.<br />
+            Earn XP \u00B7 Gold \u00B7 Evolve your hero.
+          </div>
+          <button
+            onClick={fightGhost}
+            disabled={fighting}
+            style={{
+              width: '100%', fontFamily: '"Press Start 2P", monospace', fontSize: 9,
+              padding: '12px 0',
+              background: fighting ? '#2a1a4e' : 'linear-gradient(180deg, #E74C3C 0%, #C0392B 100%)',
+              color: fighting ? '#ffffff30' : '#fff',
+              border: `2px solid ${fighting ? '#2a1a4e' : '#E74C3C'}`,
+              borderRadius: 4, cursor: fighting ? 'default' : 'pointer',
+              textShadow: fighting ? 'none' : '0 1px 0 #00000060',
+              animation: !fighting ? 'pulseGlow 1.5s infinite' : 'none',
+            }}
+          >
+            {fighting ? 'FINDING OPPONENT...' : '\u2694 FIGHT GHOST'}
+          </button>
+          <style>{`@keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 8px #F39C1240; } 50% { box-shadow: 0 0 20px #F39C12; } }`}</style>
         </div>
       )}
 
-      {/* PvP Instructions */}
-      {!showScene && (
-        <div className="forge-panel p-3">
-          <p className="font-pixel text-[9px] text-forge-purple mb-2">👥 PVP ARENA</p>
-          <div className="space-y-2 text-left">
-            <p className="font-pixel text-[7px] text-forge-wheat/60">1. Walk up to another player in the world</p>
-            <p className="font-pixel text-[7px] text-forge-wheat/60">2. Click them to view their stats</p>
-            <p className="font-pixel text-[7px] text-forge-wheat/60">3. Hit &quot;Challenge&quot; to fight</p>
-            <p className="font-pixel text-[7px] text-forge-wheat/60">4. Winner takes 10% of loser&apos;s XP</p>
-          </div>
+      {/* PvP teaser */}
+      {!result && (
+        <div style={{ background: '#0a0818', border: '1px solid #7B68EE30', borderRadius: 8, padding: 12 }}>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: '#7B68EE', marginBottom: 8 }}>{'👥'} PVP {'—'} COMING SOON</div>
+          {['1. Find another player in the world', '2. Walk up and press E to challenge', '3. Winner takes 10% of loser\'s XP'].map((line, i) => (
+            <div key={i} style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: '#ffffff40', marginBottom: 6, lineHeight: 1.6 }}>{line}</div>
+          ))}
         </div>
       )}
     </Panel>
