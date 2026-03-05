@@ -41,7 +41,13 @@ export default async function WorldPage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 gap-4">
-      <WorldNav username={playerData.xUsername} />
+      <WorldNav
+        username={playerData.xUsername}
+        stripeConnected={!!player?.stripeAccountId}
+        followers={playerData.xFollowers}
+        mrr={playerData.mrr}
+        tier={playerData.tier}
+      />
       <GameCanvasWrapper playerData={playerData} />
     </main>
   );

@@ -176,21 +176,114 @@ export function InventoryPanel({ onClose }: { onClose: () => void }) {
 }
 
 // ─── Arena Panel ───
+interface GhostFightResult {
+  winner: string;
+  playerWon: boolean;
+  xpReward: number;
+  goldReward: number;
+  evolved: boolean;
+  ghost: { username: string; tier: string; level: number; difficulty: number };
+  fightLog: string[];
+  shareCard: { title: string; subtitle: string };
+}
+
 export function ArenaPanel({ onClose }: { onClose: () => void }) {
+  const [fighting, setFighting] = useState(false);
+  const [result, setResult] = useState<GhostFightResult | null>(null);
+  const [logIndex, setLogIndex] = useState(0);
+
+  const fightGhost = async () => {
+    setFighting(true);
+    setResult(null);
+    setLogIndex(0);
+    try {
+      const res = await fetch('/api/arena/ghost', { method: 'POST' });
+      if (!res.ok) {
+        setFighting(false);
+        return;
+      }
+      const data = await res.json();
+      setResult(data.fight);
+      // Animate fight log reveal
+      const log = data.fight.fightLog ?? [];
+      for (let i = 0; i <= log.length; i++) {
+        await new Promise(r => setTimeout(r, 400));
+        setLogIndex(i + 1);
+      }
+    } catch {
+      // ignore
+    }
+    setFighting(false);
+  };
+
+  const shareToX = () => {
+    if (!result) return;
+    const text = `${result.shareCard.title}\n${result.shareCard.subtitle}\n\nPlay at midforgegame.com`;
+    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   return (
     <Panel title="Valkyra — Arena" onClose={onClose}>
-      <p className="font-pixel text-[8px] text-forge-wheat/70 mb-4">
-        Challenge other players to fight for XP and glory.
-        Click on any player in the world to view their card, then challenge them from there.
-      </p>
-      <div className="forge-panel p-3 text-center">
-        <p className="font-pixel text-[9px] text-forge-red mb-2">HOW IT WORKS</p>
+      {/* Ghost Arena Section */}
+      <div className="forge-panel p-3 mb-4">
+        <p className="font-pixel text-[9px] text-forge-red mb-2">⚔️ SOLO ARENA</p>
+        <p className="font-pixel text-[7px] text-forge-wheat/60 mb-3">
+          Fight AI opponents to earn XP and gold. Difficulty scales with your streak.
+        </p>
+
+        {!result ? (
+          <button
+            onClick={fightGhost}
+            disabled={fighting}
+            className="forge-btn text-[8px] w-full"
+          >
+            {fighting ? 'FIGHTING...' : 'FIGHT GHOST OPPONENT'}
+          </button>
+        ) : (
+          <div>
+            {/* Fight log */}
+            <div className="forge-panel p-2 mb-3 max-h-32 overflow-y-auto">
+              {result.fightLog.slice(0, logIndex).map((line, i) => (
+                <p key={i} className="font-pixel text-[6px] text-forge-wheat/70 mb-1">{line}</p>
+              ))}
+            </div>
+
+            {/* Result */}
+            <div className={`text-center py-2 mb-3 rounded ${result.playerWon ? 'bg-forge-green/10' : 'bg-forge-red/10'}`}>
+              <p className={`font-pixel text-[10px] ${result.playerWon ? 'text-forge-green' : 'text-forge-red'}`}>
+                {result.playerWon ? '🏆 VICTORY' : '💀 DEFEATED'}
+              </p>
+              <p className="font-pixel text-[7px] text-forge-wheat/60 mt-1">
+                vs {result.ghost.username} (Lv{result.ghost.level})
+              </p>
+              <p className="font-pixel text-[8px] text-forge-amber mt-1">
+                +{result.xpReward} XP {result.goldReward > 0 ? ` · +${result.goldReward}G` : ''}
+              </p>
+              {result.evolved && (
+                <p className="font-pixel text-[8px] text-forge-amber mt-1 animate-pulse">✨ FORM EVOLVED</p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={fightGhost} disabled={fighting} className="forge-btn text-[7px] flex-1">
+                {fighting ? 'FIGHTING...' : 'FIGHT AGAIN'}
+              </button>
+              <button onClick={shareToX} className="forge-btn text-[7px] flex-1 bg-[#1DA1F2]/20">
+                SHARE TO X
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* PvP Instructions */}
+      <div className="forge-panel p-3">
+        <p className="font-pixel text-[9px] text-forge-purple mb-2">👥 PVP ARENA</p>
         <div className="space-y-2 text-left">
-          <p className="font-pixel text-[7px] text-forge-wheat/60">1. Walk up to another player</p>
+          <p className="font-pixel text-[7px] text-forge-wheat/60">1. Walk up to another player in the world</p>
           <p className="font-pixel text-[7px] text-forge-wheat/60">2. Click them to view their stats</p>
-          <p className="font-pixel text-[7px] text-forge-wheat/60">3. Challenge them to a fight</p>
+          <p className="font-pixel text-[7px] text-forge-wheat/60">3. Hit &quot;Challenge&quot; to fight</p>
           <p className="font-pixel text-[7px] text-forge-wheat/60">4. Winner takes 10% of loser&apos;s XP</p>
-          <p className="font-pixel text-[7px] text-forge-wheat/60">5. Fight results auto-post to X</p>
         </div>
       </div>
     </Panel>

@@ -1,11 +1,22 @@
 'use client';
 
+import { useState } from 'react';
+
 interface PlayerCardData {
+  id?: string;
   username: string;
   tier: string;
   mrr: number;
   followers: number;
   level: number;
+}
+
+interface FightResult {
+  winner: string;
+  winnerId: string;
+  xpTransferred: number;
+  fightLog: string[];
+  shareCard: { title: string; subtitle: string; cta: string };
 }
 
 const TIER_COLORS: Record<string, string> = {
@@ -27,6 +38,33 @@ export function PlayerCard({
 }) {
   const color = TIER_COLORS[player.tier] || '#ffffff';
   const label = TIER_LABELS[player.tier] || 'Unknown';
+  const [fighting, setFighting] = useState(false);
+  const [result, setResult] = useState<FightResult | null>(null);
+
+  const challenge = async () => {
+    if (!player.id) return;
+    setFighting(true);
+    try {
+      const res = await fetch('/api/arena', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defenderId: player.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setResult(data.fight);
+      }
+    } catch {
+      // ignore
+    }
+    setFighting(false);
+  };
+
+  const shareToX = () => {
+    if (!result?.shareCard) return;
+    const text = `${result.shareCard.title}\n${result.shareCard.subtitle}\n\nPlay at midforgegame.com`;
+    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+  };
 
   return (
     <div
@@ -67,9 +105,35 @@ export function PlayerCard({
           </div>
         </div>
 
-        <button onClick={onClose} className="forge-btn text-[8px] w-full">
-          Close
-        </button>
+        {/* Fight result */}
+        {result && (
+          <div className={`forge-panel p-2 mb-3 ${result.winner === 'challenger' ? 'bg-forge-green/10' : 'bg-forge-red/10'}`}>
+            <p className={`font-pixel text-[9px] ${result.winner === 'challenger' ? 'text-forge-green' : 'text-forge-red'}`}>
+              {result.winner === 'challenger' ? '🏆 YOU WIN' : '💀 YOU LOST'}
+            </p>
+            <p className="font-pixel text-[7px] text-forge-amber mt-1">
+              {result.winner === 'challenger' ? '+' : '-'}{result.xpTransferred} XP
+            </p>
+            <button onClick={shareToX} className="forge-btn text-[6px] mt-2 bg-[#1DA1F2]/20">
+              SHARE TO X
+            </button>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          {player.id && !result && (
+            <button
+              onClick={challenge}
+              disabled={fighting}
+              className="forge-btn text-[8px] flex-1 bg-forge-red/20"
+            >
+              {fighting ? 'FIGHTING...' : '⚔️ CHALLENGE'}
+            </button>
+          )}
+          <button onClick={onClose} className="forge-btn text-[8px] flex-1">
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

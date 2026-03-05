@@ -156,10 +156,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
       game.events.on('npc_inventory', () => setActivePanel('inventory'));
       game.events.on('npc_arena', () => setActivePanel('arena'));
       game.events.on('npc_marketplace', () => setActivePanel('marketplace'));
-      game.events.on('map_transition', (data: { targetMap: string }) => {
-        setToast({ message: `${data.targetMap.replace('_', ' ')} — coming soon`, key: Date.now() });
-        setTimeout(() => setToast(null), 2500);
-      });
+      // map_transition now handled in-game via typewriter dialogue (WorldScene)
 
       gameRef.current = game;
     }

@@ -4,7 +4,15 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { SettingsPanel } from '@/components/ui/SettingsPanel';
 
-export function WorldNav({ username }: { username: string }) {
+interface WorldNavProps {
+  username: string;
+  stripeConnected?: boolean;
+  followers?: number;
+  mrr?: number;
+  tier?: string;
+}
+
+export function WorldNav({ username, stripeConnected, followers, mrr, tier }: WorldNavProps) {
   const [showSettings, setShowSettings] = useState(false);
 
   return (
@@ -30,6 +38,10 @@ export function WorldNav({ username }: { username: string }) {
         <SettingsPanel
           onClose={() => setShowSettings(false)}
           username={username}
+          stripeConnected={stripeConnected}
+          followers={followers}
+          mrr={mrr}
+          tier={tier}
         />
       )}
     </>
