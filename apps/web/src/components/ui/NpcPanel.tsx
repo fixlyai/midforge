@@ -414,7 +414,7 @@ function ArenaFightScene({
           {/* HP Bars */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}><HPBar current={cHp} max={maxHp} name={`@${playerName}`} color={playerColor} /></div>
-            <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: '#F39C12', paddingBottom: 2 }}>\u2694</div>
+            <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: '#F39C12', paddingBottom: 2 }}>⚔</div>
             <div style={{ flex: 1 }}><HPBar current={dHp} max={maxHp} name={result.ghost.username} color={ghostColor} /></div>
           </div>
 
@@ -458,7 +458,7 @@ function ArenaFightScene({
                   transition: 'all 0.2s',
                 }}
               >
-                {canAttack ? '\u2694 ATTACK' : '...'}
+                {canAttack ? '⚔ ATTACK' : '...'}
               </button>
             </div>
           )}
@@ -499,10 +499,10 @@ function ResultScreen({ result, onDone }: { result: GhostFightResult; onDone: ()
       transition: 'opacity 0.4s, transform 0.4s',
     }}>
       <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 20, color: result.playerWon ? '#27AE60' : '#E74C3C', textShadow: `0 0 20px ${result.playerWon ? '#27AE60' : '#E74C3C'}, 3px 3px 0 #000`, marginBottom: 8, letterSpacing: 2 }}>
-        {result.playerWon ? '\u{1F3C6} VICTORY!' : '\u{1F480} DEFEATED'}
+        {result.playerWon ? '🏆 VICTORY!' : '💀 DEFEATED'}
       </div>
       <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#ffffff50', marginBottom: 16 }}>
-        vs {result.ghost.username} \u00B7 Lv{result.ghost.level} {result.ghost.tier.toUpperCase()}
+        vs {result.ghost.username} · Lv{result.ghost.level} {result.ghost.tier.toUpperCase()}
       </div>
 
       {showRewards && (
@@ -521,7 +521,7 @@ function ResultScreen({ result, onDone }: { result: GhostFightResult; onDone: ()
       {showEvo && result.evolved && (
         <div style={{ background: 'linear-gradient(90deg, #F39C1220, #FFD70040, #F39C1220)', border: '2px solid #F39C12', borderRadius: 8, padding: '10px 16px', marginBottom: 16, animation: 'vsPopIn 0.4s ease-out forwards' }}>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: '#FFD700', textShadow: '0 0 12px #FFD700', animation: 'pulseGlow 0.8s infinite' }}>
-            \u2728 FORM EVOLVED!
+            ✨ FORM EVOLVED!
           </div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#F39C12', marginTop: 6 }}>
             Your hero has grown stronger
@@ -571,7 +571,7 @@ export function ArenaPanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   return (
-    <Panel title="\u2694 Valkyra \u2014 Arena" onClose={onClose}>
+    <Panel title="⚔ Valkyra — Arena" onClose={onClose}>
       {/* Active fight scene */}
       {result && !fighting && (
         <ArenaFightScene
@@ -585,10 +585,10 @@ export function ArenaPanel({ onClose }: { onClose: () => void }) {
       {/* Pre-fight screen */}
       {!result && (
         <div style={{ background: '#0a0818', border: '1px solid #F39C1230', borderRadius: 8, padding: 16, marginBottom: 12 }}>
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: '#E74C3C', marginBottom: 8 }}>\u2694 SOLO ARENA</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: '#E74C3C', marginBottom: 8 }}>⚔ SOLO ARENA</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#ffffff50', lineHeight: 1.8, marginBottom: 16 }}>
             Fight AI ghost opponents.<br />
-            Earn XP \u00B7 Gold \u00B7 Evolve your hero.
+            Earn XP · Gold · Evolve your hero.
           </div>
           <button
             onClick={fightGhost}
@@ -604,7 +604,7 @@ export function ArenaPanel({ onClose }: { onClose: () => void }) {
               animation: !fighting ? 'pulseGlow 1.5s infinite' : 'none',
             }}
           >
-            {fighting ? 'FINDING OPPONENT...' : '\u2694 FIGHT GHOST'}
+            {fighting ? 'FINDING OPPONENT...' : '⚔ FIGHT GHOST'}
           </button>
           <style>{`@keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 8px #F39C1240; } 50% { box-shadow: 0 0 20px #F39C12; } }`}</style>
         </div>
