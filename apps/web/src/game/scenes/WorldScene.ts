@@ -159,6 +159,11 @@ export class WorldScene extends Phaser.Scene {
   private midnightBellPlayed = false;
   private campfireGatheringPlayed = false;
   private sceneCheckTimer: Phaser.Time.TimerEvent | null = null;
+  private stormActive = false;
+  private stormOverlay: Phaser.GameObjects.Rectangle | null = null;
+  private stormWindParticles: Phaser.GameObjects.Arc[] = [];
+  private readonly STORM_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+  private readonly STORM_XP_REWARD = 50;
 
   // Shooting Star — silent random event
   private readonly STAR_MIN_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
@@ -1848,6 +1853,17 @@ export class WorldScene extends Phaser.Scene {
       this.campfireGatheringPlayed = true;
       this.time.delayedCall(8000, () => this.playCampfireGathering());
     }
+
+    // Scene 5: Storm Warning — random ~1/7 chance per session (once per week feel)
+    // Only triggers once, uses date-seeded RNG so same day = same result
+    if (!this.stormActive) {
+      const dayKey = new Date().toISOString().slice(0, 10);
+      const dayHash = dayKey.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+      if (dayHash % 7 === 0) {
+        // Schedule storm 10 minutes after login
+        this.time.delayedCall(10 * 60 * 1000, () => this.playStormWarning());
+      }
+    }
   }
 
   // ─── Scene 2: ForgeMaster's Morning ───
@@ -2012,6 +2028,163 @@ export class WorldScene extends Phaser.Scene {
         });
       });
     });
+  }
+
+  // ─── Scene 5: Storm Warning ───
+  private playStormWarning() {
+    if (this.stormActive || !this.player) return;
+    this.stormActive = true;
+
+    const cam = this.cameras.main;
+
+    // Activity feed announcement (emitted to React)
+    this.game.events.emit('activity_feed', '⛈ A storm approaches Midforge. Seek shelter.');
+
+    // Tavernkeeper dialogue
+    const tavernkeep = this.npcSprites.get('Tavernkeep');
+    if (tavernkeep) {
+      this.time.delayedCall(3000, () => {
+        this.showAmbientBubble(tavernkeep.x, tavernkeep.y - 24, 'Storm\'s coming.\nGet inside.');
+      });
+    }
+
+    // Dark overlay — gradual darken over 2 minutes (but we speed up for feel: 8s)
+    const mapW = cam.getBounds().width || 1280;
+    const mapH = cam.getBounds().height || 960;
+    this.stormOverlay = this.add.rectangle(mapW / 2, mapH / 2, mapW, mapH, 0x000000, 0)
+      .setDepth(150).setScrollFactor(0);
+    this.tweens.add({
+      targets: this.stormOverlay,
+      alpha: 0.35,
+      duration: 8000,
+      ease: 'Sine.easeIn',
+    });
+
+    // Wind particles — horizontal white streaks
+    const windTimer = this.time.addEvent({
+      delay: 200,
+      loop: true,
+      callback: () => {
+        if (!this.stormActive) { windTimer.remove(); return; }
+        const sx = cam.scrollX - 20;
+        const sy = cam.scrollY + Math.random() * cam.height;
+        const streak = this.add.circle(sx, sy, 1, 0xFFFFFF, 0.15 + Math.random() * 0.15).setDepth(151);
+        this.stormWindParticles.push(streak);
+        this.tweens.add({
+          targets: streak,
+          x: sx + cam.width + 40,
+          duration: 800 + Math.random() * 600,
+          ease: 'Linear',
+          onComplete: () => {
+            streak.destroy();
+            const idx = this.stormWindParticles.indexOf(streak);
+            if (idx >= 0) this.stormWindParticles.splice(idx, 1);
+          },
+        });
+      },
+    });
+
+    // Pause wandering NPCs (shelter behavior)
+    this.wanderingNpcs.forEach(w => {
+      w.timer?.remove();
+      (w.sprite.body as Phaser.Physics.Arcade.Body)?.setVelocity(0, 0);
+    });
+
+    // Storm ends after 5 minutes
+    this.time.delayedCall(this.STORM_DURATION_MS, () => {
+      this.endStorm();
+    });
+  }
+
+  private endStorm() {
+    if (!this.stormActive) return;
+    this.stormActive = false;
+
+    // Fade overlay out
+    if (this.stormOverlay) {
+      this.tweens.add({
+        targets: this.stormOverlay,
+        alpha: 0,
+        duration: 5000,
+        ease: 'Sine.easeOut',
+        onComplete: () => { this.stormOverlay?.destroy(); this.stormOverlay = null; },
+      });
+    }
+
+    // Clean up wind particles
+    this.stormWindParticles.forEach(p => p.destroy());
+    this.stormWindParticles = [];
+
+    // Resume wandering NPCs
+    this.wanderingNpcs.forEach(w => this.scheduleWanderAction(w));
+
+    // Award Storm Survivor XP
+    if (this.player) {
+      const txt = this.add.text(
+        this.player.x, this.player.y - 20,
+        `+${this.STORM_XP_REWARD} XP — Storm Survivor`,
+        { fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#95A5A6', stroke: '#000000', strokeThickness: 3, resolution: 4 }
+      ).setOrigin(0.5).setDepth(202);
+      this.tweens.add({
+        targets: txt, y: txt.y - 40, alpha: 0,
+        duration: 3000, ease: 'Power2',
+        onComplete: () => txt.destroy(),
+      });
+
+      fetch('/api/player/award-xp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: this.STORM_XP_REWARD, source: 'storm_survivor' }),
+      }).then(r => r.json()).then(d => {
+        if (d.newXP !== undefined) this.game.events.emit('xp_updated', d.newXP);
+      }).catch(() => {});
+    }
+
+    this.game.events.emit('activity_feed', '☀ The storm has passed.');
+  }
+
+  // ─── Scene 3: Wanderer Arrives ───
+  private playWandererArrival(x: number, y: number) {
+    // Screen edge amber flash
+    this.flashScreen(0xF39C12, 200);
+
+    // Portal shimmer — expanding radial ring
+    const ring1 = this.add.circle(x, y, 4, 0xF39C12, 0.6).setDepth(199);
+    const ring2 = this.add.circle(x, y, 2, 0xFFFFFF, 0.4).setDepth(200);
+
+    this.tweens.add({
+      targets: ring1,
+      scaleX: 6, scaleY: 6, alpha: 0,
+      duration: 800, ease: 'Power2',
+      onComplete: () => ring1.destroy(),
+    });
+
+    this.tweens.add({
+      targets: ring2,
+      scaleX: 4, scaleY: 4, alpha: 0,
+      duration: 600, delay: 100, ease: 'Power2',
+      onComplete: () => ring2.destroy(),
+    });
+
+    // Sparkle burst — 8 particles
+    this.time.delayedCall(300, () => {
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const sparkle = this.add.circle(x, y, 1.5, 0xF39C12, 0.8).setDepth(201);
+        this.tweens.add({
+          targets: sparkle,
+          x: x + Math.cos(angle) * 25,
+          y: y + Math.sin(angle) * 25,
+          alpha: 0,
+          duration: 500,
+          ease: 'Power2',
+          onComplete: () => sparkle.destroy(),
+        });
+      }
+    });
+
+    // Activity feed
+    this.game.events.emit('activity_feed', '✨ A hooded figure was spotted near the old oak.');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -2300,5 +2473,8 @@ export class WorldScene extends Phaser.Scene {
     this.starTimer?.remove();
     this.removeStarLanding();
     this.sceneCheckTimer?.remove();
+    this.stormOverlay?.destroy();
+    this.stormWindParticles.forEach(p => p.destroy());
+    this.stormWindParticles = [];
   }
 }
