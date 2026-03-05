@@ -58,7 +58,7 @@ export class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_metal', AUDIO.metalClick);
     this.load.audio('sfx_book', AUDIO.bookOpen);
 
-    // ── 48×48 Character Sprites (only loaded if files exist) ──
+    // ── 64×64 LPC Character Sprites ──
     const { frameWidth, frameHeight } = CHARACTER_SPRITE;
     for (const tier of CHARACTER_TIERS) {
       for (const form of CHARACTER_FORMS) {
@@ -78,13 +78,13 @@ export class PreloadScene extends Phaser.Scene {
     this.load.on('loaderror', (file: any) => {
       if (file?.key && (file.key.includes('_base') || file.key.includes('_upgraded') ||
           file.key.includes('_ascended') || file.key.startsWith('npc_'))) {
-        // Silently ignore — 48×48 sprites not yet generated
+        // Silently ignore — sprite file not found
       }
     });
   }
 
   create() {
-    // Create animations for any successfully loaded 48×48 sprite sheets
+    // Create animations for any successfully loaded 64×64 LPC sprite sheets
     createAllAnimations(this);
     this.scene.start('WorldScene');
   }

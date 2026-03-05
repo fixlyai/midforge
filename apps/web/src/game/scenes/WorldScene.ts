@@ -157,7 +157,7 @@ export class WorldScene extends Phaser.Scene {
     const isFirstLogin = playerData?.firstLogin !== false;
     const spawnPos = isFirstLogin ? this.spawnNewGame : this.spawnDefault;
 
-    // Resolve 48×48 sprite key; fall back to 16×16 Kenney if not loaded
+    // Resolve 64×64 LPC sprite key; fall back to 16×16 Kenney if not loaded
     this.spriteKey = getCharacterSpriteKey(this.playerTier, playerData?.xp ?? 0);
     this.useNewSprites = this.textures.exists(this.spriteKey);
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
 export function SettingsPanel({
   onClose,
@@ -67,6 +68,14 @@ export function SettingsPanel({
             </button>
           </div>
         </div>
+
+        {/* Credits */}
+        <Link
+          href="/credits"
+          className="block w-full text-center font-pixel text-[8px] text-forge-wheat/50 hover:text-forge-amber py-2 mb-4 transition-colors"
+        >
+          Credits & Licenses
+        </Link>
 
         {/* Logout */}
         <button

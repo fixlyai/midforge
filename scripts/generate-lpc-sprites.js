@@ -33,147 +33,134 @@ const CHARACTERS = {
   villager_base: [
     'body/bodies/male/walk/light.png',
     'legs/pants/male/walk/teal.png',
-    'feet/shoes/male/walk/brown.png',
-    'hair/plain/male/walk/brunette.png',
+    'feet/shoes/basic/male/walk/brown.png',
+    'hair/bangsshort/adult/walk/dark_brown.png',
   ],
   villager_upgraded: [
     'body/bodies/male/walk/light.png',
     'legs/pants/male/walk/teal.png',
-    'feet/shoes/male/walk/brown.png',
-    'arms/hands/gloves/male/walk/brown.png',
-    'hair/plain/male/walk/brunette.png',
+    'feet/shoes/basic/male/walk/brown.png',
+    'hair/bangsshort/adult/walk/dark_brown.png',
   ],
   villager_ascended: [
     'body/bodies/male/walk/light.png',
     'legs/pants/male/walk/teal.png',
-    'feet/armor/male/walk/brown.png',
-    'arms/hands/gloves/male/walk/brown.png',
-    'hair/plain/male/walk/brunette.png',
-    'head/helms/male/walk/chainhat.png',
+    'feet/armour/plate/male/walk/steel.png',
+    'hair/bangsshort/adult/walk/dark_brown.png',
+    'hat/helmet/barbarian/adult/walk/steel.png',
   ],
 
   // ═══ APPRENTICE TIER ═══
   apprentice_base: [
     'body/bodies/male/walk/light.png',
     'legs/pants/male/walk/white.png',
-    'feet/shoes/male/walk/black.png',
-    'hair/plain/male/walk/raven.png',
+    'feet/shoes/basic/male/walk/black.png',
+    'hair/messy1/adult/walk/black.png',
   ],
   apprentice_upgraded: [
     'body/bodies/male/walk/light.png',
     'legs/pants/male/walk/white.png',
-    'feet/shoes/male/walk/black.png',
-    'arms/hands/gloves/male/walk/white.png',
-    'hair/plain/male/walk/raven.png',
+    'feet/shoes/basic/male/walk/black.png',
+    'hair/messy1/adult/walk/black.png',
   ],
   apprentice_ascended: [
     'body/bodies/male/walk/light.png',
     'legs/pants/male/walk/white.png',
-    'feet/armor/male/walk/steel.png',
-    'arms/hands/gloves/male/walk/white.png',
-    'hair/plain/male/walk/raven.png',
-    'head/helms/male/walk/chainhat.png',
+    'feet/armour/plate/male/walk/steel.png',
+    'hair/messy1/adult/walk/black.png',
+    'hat/helmet/barbarian/adult/walk/steel.png',
   ],
 
   // ═══ MERCHANT TIER ═══
   merchant_base: [
     'body/bodies/male/walk/olive.png',
     'legs/pants/male/walk/red.png',
-    'feet/shoes/male/walk/brown.png',
-    'hair/plain/male/walk/brunette2.png',
+    'feet/shoes/basic/male/walk/brown.png',
+    'hair/bangsshort/adult/walk/light_brown.png',
   ],
   merchant_upgraded: [
     'body/bodies/male/walk/olive.png',
     'legs/pants/male/walk/red.png',
-    'feet/shoes/male/walk/brown.png',
-    'arms/hands/gloves/male/walk/brown.png',
-    'hair/plain/male/walk/brunette2.png',
+    'feet/shoes/basic/male/walk/brown.png',
+    'hair/bangsshort/adult/walk/light_brown.png',
   ],
   merchant_ascended: [
     'body/bodies/male/walk/olive.png',
     'legs/pants/male/walk/red.png',
-    'feet/armor/male/walk/golden.png',
-    'arms/hands/gloves/male/walk/brown.png',
-    'hair/plain/male/walk/brunette2.png',
-    'hat/phrygian/male/walk/red.png',
+    'feet/armour/plate/male/walk/gold.png',
+    'hair/bangsshort/adult/walk/light_brown.png',
+    'hat/helmet/barbarian/adult/walk/gold.png',
   ],
 
   // ═══ WARRIOR TIER ═══
   warrior_base: [
     'body/bodies/male/walk/light.png',
-    'legs/armor/male/walk/steel.png',
-    'feet/armor/male/walk/steel.png',
-    'hair/buzzcut/male/walk/raven.png',
+    'legs/pants/male/walk/red.png',
+    'feet/armour/plate/male/walk/steel.png',
+    'hair/buzzcut/adult/walk/black.png',
   ],
   warrior_upgraded: [
     'body/bodies/male/walk/light.png',
-    'legs/armor/male/walk/steel.png',
-    'feet/armor/male/walk/steel.png',
-    'arms/hands/gloves/male/walk/steel.png',
-    'hair/buzzcut/male/walk/raven.png',
-    'head/helms/male/walk/chainhat.png',
+    'legs/pants/male/walk/red.png',
+    'feet/armour/plate/male/walk/steel.png',
+    'hair/buzzcut/adult/walk/black.png',
+    'hat/helmet/barbarian/adult/walk/steel.png',
   ],
   warrior_ascended: [
     'body/bodies/male/walk/light.png',
-    'legs/armor/male/walk/golden.png',
-    'feet/armor/male/walk/golden.png',
-    'arms/hands/gloves/male/walk/golden.png',
-    'hair/buzzcut/male/walk/raven.png',
-    'head/helms/male/walk/golden.png',
+    'legs/pants/male/walk/red.png',
+    'feet/armour/plate/male/walk/gold.png',
+    'hair/buzzcut/adult/walk/black.png',
+    'hat/helmet/barbarian/adult/walk/gold.png',
   ],
 
   // ═══ LEGEND TIER ═══
   legend_base: [
     'body/bodies/male/walk/light.png',
-    'legs/armor/male/walk/golden.png',
-    'feet/armor/male/walk/golden.png',
-    'hair/plain/male/walk/gold.png',
+    'legs/pants/male/walk/white.png',
+    'feet/armour/plate/male/walk/gold.png',
+    'hair/bangsshort/adult/walk/gold.png',
   ],
   legend_upgraded: [
     'body/bodies/male/walk/light.png',
-    'legs/armor/male/walk/golden.png',
-    'feet/armor/male/walk/golden.png',
-    'arms/hands/gloves/male/walk/golden.png',
-    'hair/plain/male/walk/gold.png',
-    'head/helms/male/walk/golden.png',
+    'legs/pants/male/walk/white.png',
+    'feet/armour/plate/male/walk/gold.png',
+    'hair/bangsshort/adult/walk/gold.png',
+    'hat/helmet/barbarian/adult/walk/gold.png',
   ],
   legend_ascended: [
     'body/bodies/male/walk/light.png',
-    'legs/armor/male/walk/golden.png',
-    'feet/armor/male/walk/golden.png',
-    'arms/hands/gloves/male/walk/golden.png',
-    'hair/plain/male/walk/gold.png',
-    'head/helms/male/walk/golden.png',
-    'cape/normal/male/walk/white.png',
+    'legs/pants/male/walk/white.png',
+    'feet/armour/plate/male/walk/gold.png',
+    'hair/bangsshort/adult/walk/gold.png',
+    'hat/helmet/barbarian/adult/walk/gold.png',
   ],
 
   // ═══ NPCs ═══
   npc_elder: [
     'body/bodies/male/walk/light.png',
     'legs/pants/male/walk/white.png',
-    'feet/shoes/male/walk/black.png',
-    'hair/plain/male/walk/white.png',
+    'feet/shoes/basic/male/walk/black.png',
+    'hair/bangsshort/adult/walk/white.png',
   ],
   npc_guard: [
     'body/bodies/male/walk/light.png',
-    'legs/armor/male/walk/steel.png',
-    'feet/armor/male/walk/steel.png',
-    'arms/hands/gloves/male/walk/steel.png',
-    'hair/buzzcut/male/walk/raven.png',
-    'head/helms/male/walk/chainhat.png',
+    'legs/pants/male/walk/teal.png',
+    'feet/armour/plate/male/walk/steel.png',
+    'hair/buzzcut/adult/walk/black.png',
+    'hat/helmet/barbarian/adult/walk/steel.png',
   ],
   npc_merchant: [
     'body/bodies/male/walk/olive.png',
     'legs/pants/male/walk/red.png',
-    'feet/shoes/male/walk/brown.png',
-    'hair/plain/male/walk/brunette.png',
-    'hat/phrygian/male/walk/red.png',
+    'feet/shoes/basic/male/walk/brown.png',
+    'hair/bangsshort/adult/walk/dark_brown.png',
   ],
   npc_villager: [
     'body/bodies/male/walk/light.png',
     'legs/pants/male/walk/teal.png',
-    'feet/shoes/male/walk/brown.png',
-    'hair/plain/male/walk/brunette.png',
+    'feet/shoes/basic/male/walk/brown.png',
+    'hair/bangsshort/adult/walk/dark_brown.png',
   ],
 };
 
@@ -247,16 +234,59 @@ async function generateSheet(name, layerPaths) {
   return true;
 }
 
+// ── Verify mode: check all URLs without generating ──────────────
+async function verifyAll() {
+  console.log('Verifying all LPC layer URLs...\n');
+  let okCount = 0;
+  let failCount = 0;
+  for (const [name, layers] of Object.entries(CHARACTERS)) {
+    console.log(`  ${name}:`);
+    for (const layerPath of layers) {
+      const url = `${BASE_URL}/${layerPath}`;
+      try {
+        await downloadFile(url);
+        console.log(`    ✓ ${layerPath}`);
+        okCount++;
+      } catch (err) {
+        console.log(`    ✗ ${layerPath} — ${err.message}`);
+        failCount++;
+      }
+    }
+  }
+  console.log(`\nVerified: ${okCount} OK, ${failCount} FAILED`);
+  if (failCount > 0) process.exit(1);
+}
+
 // ── Main ─────────────────────────────────────────────────────────
 async function main() {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 
-  console.log('Generating LPC 64×64 walk-cycle sprite sheets...\n');
+  const args = process.argv.slice(2);
+
+  // --verify: check all URLs
+  if (args.includes('--verify')) {
+    await verifyAll();
+    return;
+  }
+
+  // --character <name>: generate only one character
+  const charIdx = args.indexOf('--character');
+  const singleChar = charIdx >= 0 ? args[charIdx + 1] : null;
+
+  const entries = singleChar
+    ? [[singleChar, CHARACTERS[singleChar]]].filter(([, v]) => v)
+    : Object.entries(CHARACTERS);
+
+  if (entries.length === 0) {
+    console.error(`Character "${singleChar}" not found.`);
+    process.exit(1);
+  }
+
+  console.log(`Generating ${entries.length} LPC 64×64 walk-cycle sprite sheet(s)...\n`);
 
   let success = 0;
   let fail = 0;
-  const entries = Object.entries(CHARACTERS);
 
   for (const [name, layers] of entries) {
     const ok = await generateSheet(name, layers);
@@ -267,9 +297,7 @@ async function main() {
   console.log(`Output: ${OUTPUT_DIR}`);
 
   if (fail > 0) {
-    console.log('\nSome layers failed to download. The LPC repo may have different paths.');
-    console.log('Check the warnings above and adjust layer paths in this script.');
-    console.log('Fallback: the placeholder sprites from the previous script still work.\n');
+    console.log('\nSome layers failed to download. Run with --verify to check all URLs.');
   }
 }
 

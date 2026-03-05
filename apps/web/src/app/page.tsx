@@ -273,6 +273,10 @@ export default async function LandingPage() {
           <a href="#" className="font-pixel text-[7px] text-forge-wheat/30 hover:text-forge-wheat/60 transition-colors">
             Discord
           </a>
+          <span className="font-pixel text-[7px] text-forge-wheat/20">·</span>
+          <Link href="/credits" className="font-pixel text-[7px] text-forge-wheat/30 hover:text-forge-wheat/60 transition-colors">
+            Credits
+          </Link>
         </div>
         <p className="font-pixel text-[7px] sm:text-[8px] text-forge-wheat/30 tracking-widest">
           Built on Neon · Powered by{' '}
