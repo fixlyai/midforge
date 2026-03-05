@@ -274,15 +274,62 @@ function HPBar({ current, max, name, color }: { current: number; max: number; na
   );
 }
 
-// ─── Arena Background ───
-function ArenaBackground({ flash }: { flash: 'left' | 'right' | null }) {
+// ─── Arena Biome Backgrounds (6 CSS battle scenes) ───
+type ArenaBiome = 'arena' | 'forest' | 'cave' | 'castle' | 'desert' | 'ruins';
+
+const BIOME_STYLES: Record<ArenaBiome, {
+  sky: string; ground: string; groundBorder: string;
+  accent1: string; accent2: string; particle: string;
+}> = {
+  arena: {
+    sky: 'linear-gradient(180deg, #0d0a1e 0%, #1a1030 60%, #2a1a4e 100%)',
+    ground: 'repeating-linear-gradient(90deg, #1a1225 0px, #1a1225 31px, #221530 32px)',
+    groundBorder: '#F39C1220',
+    accent1: '🔥', accent2: '🔥', particle: '#F39C12',
+  },
+  forest: {
+    sky: 'linear-gradient(180deg, #0a1a0a 0%, #0d2a0d 50%, #1a3a1a 100%)',
+    ground: 'repeating-linear-gradient(90deg, #0d1a0d 0px, #0d1a0d 15px, #1a2a1a 16px)',
+    groundBorder: '#2D5A2730',
+    accent1: '🌲', accent2: '🌿', particle: '#2D5A27',
+  },
+  cave: {
+    sky: 'linear-gradient(180deg, #0a0808 0%, #1a1210 50%, #2a1a10 100%)',
+    ground: 'repeating-linear-gradient(90deg, #1a1410 0px, #1a1410 20px, #2a1e14 21px)',
+    groundBorder: '#6B5B4F30',
+    accent1: '🪨', accent2: '💎', particle: '#6B5B4F',
+  },
+  castle: {
+    sky: 'linear-gradient(180deg, #0a0a14 0%, #14142a 50%, #1e1e3a 100%)',
+    ground: 'repeating-linear-gradient(90deg, #141420 0px, #141420 23px, #1e1e30 24px)',
+    groundBorder: '#7B68EE30',
+    accent1: '🏰', accent2: '⚔', particle: '#7B68EE',
+  },
+  desert: {
+    sky: 'linear-gradient(180deg, #1a1408 0%, #2a2010 50%, #3a2a14 100%)',
+    ground: 'repeating-linear-gradient(90deg, #2a2010 0px, #2a2010 18px, #3a2a14 19px)',
+    groundBorder: '#C0872030',
+    accent1: '🌵', accent2: '☀', particle: '#C08720',
+  },
+  ruins: {
+    sky: 'linear-gradient(180deg, #0a0a0a 0%, #1a1418 50%, #2a1a20 100%)',
+    ground: 'repeating-linear-gradient(90deg, #141014 0px, #141014 25px, #1e1620 26px)',
+    groundBorder: '#8B250040',
+    accent1: '💀', accent2: '🕯', particle: '#8B2500',
+  },
+};
+
+const BIOME_LIST: ArenaBiome[] = ['arena', 'forest', 'cave', 'castle', 'desert', 'ruins'];
+
+function ArenaBackground({ flash, biome = 'arena' }: { flash: 'left' | 'right' | null; biome?: ArenaBiome }) {
+  const s = BIOME_STYLES[biome] ?? BIOME_STYLES.arena;
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 8 }}>
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%', background: 'repeating-linear-gradient(90deg, #1a1225 0px, #1a1225 31px, #221530 32px)', borderTop: '2px solid #F39C1220' }} />
-      <div style={{ position: 'absolute', top: 12, left: 16, fontSize: 14 }}>{'🔥'}</div>
-      <div style={{ position: 'absolute', top: 12, right: 16, fontSize: 14 }}>{'🔥'}</div>
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 8, background: s.sky }}>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%', background: s.ground, borderTop: `2px solid ${s.groundBorder}` }} />
+      <div style={{ position: 'absolute', top: 12, left: 16, fontSize: 14 }}>{s.accent1}</div>
+      <div style={{ position: 'absolute', top: 12, right: 16, fontSize: 14 }}>{s.accent2}</div>
       {flash && (
-        <div style={{ position: 'absolute', inset: 0, backgroundColor: flash === 'left' ? '#FF000020' : '#F39C1220', animation: 'flashFade 0.15s ease-out forwards', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundColor: flash === 'left' ? '#FF000020' : `${s.particle}20`, animation: 'flashFade 0.15s ease-out forwards', pointerEvents: 'none' }} />
       )}
       <div style={{ position: 'absolute', inset: 0, opacity: 0.03, background: 'repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 1px, transparent 3px)', pointerEvents: 'none' }} />
     </div>
@@ -293,9 +340,9 @@ function ArenaBackground({ flash }: { flash: 'left' | 'right' | null }) {
 type CombatAction = 'strike' | 'powerStrike' | 'block';
 
 function ArenaFightScene({
-  result, playerName, playerTier = 'villager', onDone,
+  result, playerName, playerTier = 'villager', onDone, biome = 'arena',
 }: {
-  result: GhostFightResult; playerName: string; playerTier?: string; onDone: () => void;
+  result: GhostFightResult; playerName: string; playerTier?: string; onDone: () => void; biome?: ArenaBiome;
 }) {
   const log = result.fightLog;
   const maxHp = log.length > 0 ? Math.round(log[0].cHp + log[0].cDmg * 2) : 100;
@@ -478,7 +525,7 @@ function ArenaFightScene({
       `}</style>
 
       <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '2px solid #F39C1240', background: '#0d0a1e', minHeight: 280, marginBottom: 12 }}>
-        <ArenaBackground flash={flashBg} />
+        <ArenaBackground flash={flashBg} biome={biome} />
 
         {/* VS Intro overlay */}
         {intro && vsVisible && (
@@ -649,15 +696,25 @@ function ResultScreen({ result, onDone }: { result: GhostFightResult; onDone: ()
 }
 
 // ─── Arena Panel ───
+// Brigand name → biome mapping
+const BRIGAND_BIOME_MAP: Record<string, ArenaBiome> = {
+  'Forest Brigand': 'forest',
+  'Cave Troll': 'cave',
+  'Deserter Knight': 'ruins',
+};
+
 export function ArenaPanel({ onClose, brigandData }: { onClose: () => void; brigandData?: any }) {
   const [fighting, setFighting] = useState(false);
   const [result, setResult] = useState<GhostFightResult | null>(null);
   const [playerTier, setPlayerTier] = useState('villager');
+  const [fightBiome, setFightBiome] = useState<ArenaBiome>('arena');
   const isBrigand = !!brigandData;
 
   const fightGhost = useCallback(async () => {
     setFighting(true);
     setResult(null);
+    // Random biome for arena fights
+    setFightBiome(BIOME_LIST[Math.floor(Math.random() * BIOME_LIST.length)]);
     try {
       const res = await fetch('/api/arena/ghost', { method: 'POST' });
       if (!res.ok) throw new Error('Fight failed');
@@ -675,6 +732,7 @@ export function ArenaPanel({ onClose, brigandData }: { onClose: () => void; brig
     if (brigandData?.fight) {
       setResult(brigandData.fight);
       if (brigandData.playerTier) setPlayerTier(brigandData.playerTier);
+      setFightBiome(BRIGAND_BIOME_MAP[brigandData.brigandName] ?? 'ruins');
     }
   }, [brigandData]);
 
@@ -690,6 +748,7 @@ export function ArenaPanel({ onClose, brigandData }: { onClose: () => void; brig
           result={result}
           playerName="You"
           playerTier={playerTier}
+          biome={fightBiome}
           onDone={() => {
             if (isBrigand) {
               onClose();
