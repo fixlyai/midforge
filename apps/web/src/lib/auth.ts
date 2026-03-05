@@ -2,8 +2,9 @@ import NextAuth from 'next-auth';
 import Twitter from 'next-auth/providers/twitter';
 import { db } from '@midforge/db/client';
 import { players } from '@midforge/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { calculateTier, calculateLevel, getBestWeapon, getBestArmor } from '@midforge/shared/types';
+import { getCharacterSpriteKey } from '@midforge/shared/constants/game';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -34,13 +35,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const tier = calculateTier(player.mrr ?? 0, xFollowers);
         const level = calculateLevel(player.xp ?? 0);
 
-        // Daily login XP check
+        // Daily login XP check + evolution detection
         const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
         const isNewDay = player.lastLoginDate !== today;
         const dailyXpBonus = isNewDay ? 25 : 0;
-        const notifications: { type: string; message: string }[] = isNewDay
-          ? [{ type: 'daily_login', message: '+25 XP — Daily Login Bonus' }]
-          : [];
+        const oldXp = player.xp ?? 0;
+        const newXp = oldXp + dailyXpBonus;
+
+        const notifications: { type: string; message: string }[] = [];
+        if (isNewDay) {
+          notifications.push({ type: 'daily_login', message: '+25 XP — Daily Login Bonus' });
+
+          // Check for form evolution
+          const oldForm = getCharacterSpriteKey(tier, oldXp);
+          const newForm = getCharacterSpriteKey(tier, newXp);
+          if (newForm !== oldForm) {
+            const formLabel = newForm.split('_').pop() ?? 'base';
+            const formNum = formLabel === 'ascended' ? 'III' : formLabel === 'upgraded' ? 'II' : 'I';
+            notifications.push({ type: 'evolution', message: `FORM UPGRADED — ${tier.toUpperCase()} ${formNum}` });
+          }
+        }
+
+        // Resolve current character form
+        const characterForm = getCharacterSpriteKey(tier, newXp).split('_').pop() ?? 'base';
 
         await db
           .update(players)
@@ -55,8 +72,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             equippedWeapon: getBestWeapon(player.mrr ?? 0),
             equippedArmor: getBestArmor(xFollowers),
             lastSeenAt: new Date(),
+            characterForm,
             ...(isNewDay ? {
-              xp: (player.xp ?? 0) + dailyXpBonus,
+              xp: newXp,
               lastLoginDate: today,
               pendingNotifications: notifications,
             } : {}),

@@ -472,3 +472,67 @@ export const TEXT_STYLES = {
     padding: { x: 4, y: 2 },
   },
 } as const;
+
+// ── 48×48 Character Sprite System ──────────────────────────────
+// Sprite sheets: 384×192px, 48×48 frames, 8 cols × 4 rows
+// Row 0: Walk DOWN (0-7), Row 1: Walk LEFT (8-15)
+// Row 2: Walk RIGHT (16-23), Row 3: Walk UP (24-31)
+
+export const CHARACTER_SPRITE = {
+  frameWidth: 48,
+  frameHeight: 48,
+  frameRate: 10,    // 10fps × 8 frames = 0.8s walk cycle
+} as const;
+
+export const CHARACTER_TIERS = ['villager', 'apprentice', 'merchant', 'warrior', 'legend'] as const;
+export const CHARACTER_FORMS = ['base', 'upgraded', 'ascended'] as const;
+
+export const CHARACTER_NPC_KEYS = [
+  'npc_elder', 'npc_guard', 'npc_merchant', 'npc_villager',
+] as const;
+
+// XP thresholds for form upgrades per tier
+export const FORM_UNLOCK_XP: Record<string, { upgraded: number; ascended: number }> = {
+  villager:   { upgraded: 500,       ascended: 2_000 },
+  apprentice: { upgraded: 3_000,     ascended: 8_000 },
+  merchant:   { upgraded: 15_000,    ascended: 40_000 },
+  warrior:    { upgraded: 60_000,    ascended: 150_000 },
+  legend:     { upgraded: 500_000,   ascended: 2_000_000 },
+};
+
+// XP sources — how much XP each action awards
+export const XP_SOURCES = {
+  daily_login:     25,
+  arena_win:       { min: 200, max: 500 },
+  arena_loss:      50,
+  npc_fight_win:   30,
+  quest_complete:  { min: 100, max: 1500 },
+  invite_accepted: 300,
+} as const;
+
+// Resolve which sprite sheet key to use based on tier + XP
+export function getCharacterSpriteKey(tier: string, xp: number): string {
+  const thresholds = FORM_UNLOCK_XP[tier];
+  if (!thresholds) return `${tier}_base`;
+  if (xp >= thresholds.ascended) return `${tier}_ascended`;
+  if (xp >= thresholds.upgraded) return `${tier}_upgraded`;
+  return `${tier}_base`;
+}
+
+// Map tier string → sprite key prefix (for legacy fallback to Kenney sprites)
+export function tierToSpriteKey(tier: string): string {
+  const map: Record<string, string> = {
+    villager: 'villager', apprentice: 'apprentice',
+    merchant: 'merchant', warrior: 'warrior', legend: 'legend',
+  };
+  return map[tier] ?? 'villager';
+}
+
+// Tier colors for evolution particle bursts
+export const TIER_PARTICLE_COLORS: Record<string, number> = {
+  villager:   0x8B7355,
+  apprentice: 0x4A90D9,
+  merchant:   0x7B68EE,
+  warrior:    0xE74C3C,
+  legend:     0xF39C12,
+};

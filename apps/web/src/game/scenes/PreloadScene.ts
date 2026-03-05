@@ -6,7 +6,12 @@ import {
   TILESHEET_DUNGEON,
   AUDIO,
   MAP_FILE,
+  CHARACTER_SPRITE,
+  CHARACTER_TIERS,
+  CHARACTER_FORMS,
+  CHARACTER_NPC_KEYS,
 } from '@midforge/shared/constants/game';
+import { createAllAnimations } from '@/game/managers/AnimationManager';
 
 export class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -52,9 +57,35 @@ export class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_knife', AUDIO.knifeSlice);
     this.load.audio('sfx_metal', AUDIO.metalClick);
     this.load.audio('sfx_book', AUDIO.bookOpen);
+
+    // ── 48×48 Character Sprites (only loaded if files exist) ──
+    const { frameWidth, frameHeight } = CHARACTER_SPRITE;
+    for (const tier of CHARACTER_TIERS) {
+      for (const form of CHARACTER_FORMS) {
+        const key = `${tier}_${form}`;
+        this.load.spritesheet(key, `/sprites/characters/${key}.png`, {
+          frameWidth, frameHeight,
+        });
+      }
+    }
+    for (const npcKey of CHARACTER_NPC_KEYS) {
+      this.load.spritesheet(npcKey, `/sprites/characters/${npcKey}.png`, {
+        frameWidth, frameHeight,
+      });
+    }
+
+    // Suppress errors for missing sprite files (assets may not exist yet)
+    this.load.on('loaderror', (file: any) => {
+      if (file?.key && (file.key.includes('_base') || file.key.includes('_upgraded') ||
+          file.key.includes('_ascended') || file.key.startsWith('npc_'))) {
+        // Silently ignore — 48×48 sprites not yet generated
+      }
+    });
   }
 
   create() {
+    // Create animations for any successfully loaded 48×48 sprite sheets
+    createAllAnimations(this);
     this.scene.start('WorldScene');
   }
 }

@@ -11,6 +11,7 @@ import {
   NPC_SPRITE_NAMES, NPC_TYPE_EVENT,
   ANIMATED_TILES, WANDERING_NPC,
   INTRO, TEXT_STYLES,
+  getCharacterSpriteKey, TIER_PARTICLE_COLORS,
 } from '@midforge/shared/constants/game';
 
 // ── TMJ type helpers ─────────────────────────────────────────
@@ -50,6 +51,8 @@ export class WorldScene extends Phaser.Scene {
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   private lastDirection = 'down';
   private playerTier = 'villager';
+  private spriteKey = '';           // resolved 48×48 sprite key (e.g. 'villager_base')
+  private useNewSprites = false;    // true if 48×48 assets loaded successfully
   private nameLabel!: Phaser.GameObjects.Text;
   private inputEnabled = false;
 
@@ -153,13 +156,26 @@ export class WorldScene extends Phaser.Scene {
     // ── Player ──────────────────────────────────────────
     const isFirstLogin = playerData?.firstLogin !== false;
     const spawnPos = isFirstLogin ? this.spawnNewGame : this.spawnDefault;
-    const spriteFrame = TIER_SPRITE_MAP[this.playerTier] ?? TIER_SPRITE_MAP.villager;
 
-    this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, TILESHEET_DUNGEON.key, spriteFrame);
-    this.player.setDepth(PLAYER_DEPTH);
-    const pBody = this.player.body as Phaser.Physics.Arcade.Body;
-    pBody.setSize(PLAYER_HITBOX.width, PLAYER_HITBOX.height);
-    pBody.setOffset(PLAYER_HITBOX.offsetX, PLAYER_HITBOX.offsetY);
+    // Resolve 48×48 sprite key; fall back to 16×16 Kenney if not loaded
+    this.spriteKey = getCharacterSpriteKey(this.playerTier, playerData?.xp ?? 0);
+    this.useNewSprites = this.textures.exists(this.spriteKey);
+
+    if (this.useNewSprites) {
+      this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, this.spriteKey);
+      this.player.setDepth(PLAYER_DEPTH);
+      const pBody = this.player.body as Phaser.Physics.Arcade.Body;
+      pBody.setSize(24, 16);
+      pBody.setOffset(12, 32);
+      this.player.play(`${this.spriteKey}_idle`);
+    } else {
+      const spriteFrame = TIER_SPRITE_MAP[this.playerTier] ?? TIER_SPRITE_MAP.villager;
+      this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, TILESHEET_DUNGEON.key, spriteFrame);
+      this.player.setDepth(PLAYER_DEPTH);
+      const pBody = this.player.body as Phaser.Physics.Arcade.Body;
+      pBody.setSize(PLAYER_HITBOX.width, PLAYER_HITBOX.height);
+      pBody.setOffset(PLAYER_HITBOX.offsetX, PLAYER_HITBOX.offsetY);
+    }
     this.player.setCollideWorldBounds(true);
     this.physics.add.collider(this.player, this.walls);
 
@@ -218,26 +234,31 @@ export class WorldScene extends Phaser.Scene {
     const notifications = playerData?.pendingNotifications as { type: string; message: string }[] | null;
     if (!notifications || notifications.length === 0) return;
 
-    // Display each notification as floating text
+    // Display each notification as floating text; evolution gets a special sequence
     let delay = 500;
     for (const notif of notifications) {
-      this.time.delayedCall(delay, () => {
-        const txt = this.add.text(
-          this.player.x, this.player.y - 30,
-          notif.message,
-          { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#F39C12' }
-        ).setOrigin(0.5).setDepth(200);
+      if (notif.type === 'evolution') {
+        this.time.delayedCall(delay, () => this.playEvolutionSequence(notif.message));
+        delay += 4000; // evolution takes ~3.5s
+      } else {
+        this.time.delayedCall(delay, () => {
+          const txt = this.add.text(
+            this.player.x, this.player.y - 30,
+            notif.message,
+            { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#F39C12' }
+          ).setOrigin(0.5).setDepth(200);
 
-        this.tweens.add({
-          targets: txt,
-          y: txt.y - 40,
-          alpha: 0,
-          duration: 3000,
-          ease: 'Power2',
-          onComplete: () => txt.destroy(),
+          this.tweens.add({
+            targets: txt,
+            y: txt.y - 40,
+            alpha: 0,
+            duration: 3000,
+            ease: 'Power2',
+            onComplete: () => txt.destroy(),
+          });
         });
-      });
-      delay += 1000;
+        delay += 1000;
+      }
     }
 
     // Clear notifications on server
@@ -246,6 +267,104 @@ export class WorldScene extends Phaser.Scene {
     } catch (e) {
       // non-critical, ignore
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  EVOLUTION SEQUENCE — plays when character form upgrades
+  // ═══════════════════════════════════════════════════════════
+  private playEvolutionSequence(message: string) {
+    if (!this.player) return;
+
+    const cam = this.cameras.main;
+    const currentZoom = cam.zoom;
+    const tierColor = TIER_PARTICLE_COLORS[this.playerTier] ?? 0xF39C12;
+
+    // Pause movement
+    this.inputEnabled = false;
+    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
+    playerBody.setVelocity(0, 0);
+
+    // Phase 1: Camera zoom in (800ms)
+    this.tweens.add({
+      targets: cam,
+      zoom: currentZoom + 0.5,
+      duration: 800,
+      ease: 'Power2',
+    });
+
+    // Phase 2: White flash on player (3× at 200ms intervals, starts at 400ms)
+    for (let i = 0; i < 3; i++) {
+      this.time.delayedCall(400 + i * 200, () => {
+        this.player.setTint(0xffffff);
+        this.time.delayedCall(100, () => this.player.clearTint());
+      });
+    }
+
+    // Phase 3: Swap sprite texture if new form exists (at 1200ms)
+    this.time.delayedCall(1200, () => {
+      const newKey = getCharacterSpriteKey(this.playerTier, Infinity); // latest possible form
+      if (this.textures.exists(newKey)) {
+        this.spriteKey = newKey;
+        this.player.setTexture(newKey);
+        this.player.play(`${newKey}_idle`, true);
+        this.useNewSprites = true;
+      }
+    });
+
+    // Phase 4: Particle burst in tier color (at 1300ms)
+    this.time.delayedCall(1300, () => {
+      const particles: Phaser.GameObjects.Arc[] = [];
+      for (let i = 0; i < 20; i++) {
+        const angle = (Math.PI * 2 / 20) * i;
+        const p = this.add.circle(this.player.x, this.player.y, 3, tierColor, 0.9)
+          .setDepth(200);
+        particles.push(p);
+        this.tweens.add({
+          targets: p,
+          x: this.player.x + Math.cos(angle) * 40,
+          y: this.player.y + Math.sin(angle) * 40,
+          alpha: 0,
+          scale: 0.2,
+          duration: 800,
+          ease: 'Power2',
+          onComplete: () => p.destroy(),
+        });
+      }
+    });
+
+    // Phase 5: Floating evolution text (at 1400ms)
+    this.time.delayedCall(1400, () => {
+      const txt = this.add.text(
+        this.player.x, this.player.y - 40,
+        message,
+        {
+          fontFamily: '"Press Start 2P"', fontSize: '10px', color: '#F39C12',
+          stroke: '#000000', strokeThickness: 3,
+        }
+      ).setOrigin(0.5).setDepth(200);
+
+      this.tweens.add({
+        targets: txt,
+        y: txt.y - 50,
+        alpha: 0,
+        duration: 3000,
+        ease: 'Power2',
+        onComplete: () => txt.destroy(),
+      });
+    });
+
+    // Phase 6: Camera zoom back out + re-enable input (at 2200ms)
+    this.time.delayedCall(2200, () => {
+      this.tweens.add({
+        targets: cam,
+        zoom: currentZoom,
+        duration: 800,
+        ease: 'Power2',
+        onComplete: () => {
+          this.inputEnabled = true;
+        },
+      });
+    });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -963,6 +1082,15 @@ export class WorldScene extends Phaser.Scene {
 
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
     playerBody.setVelocity(vx, vy);
+
+    // Play walk/idle animations when 48×48 sprites are active
+    if (this.useNewSprites) {
+      if (moving) {
+        this.player.play(`${this.spriteKey}_walk_${direction}`, true);
+      } else {
+        this.player.play(`${this.spriteKey}_idle`, true);
+      }
+    }
 
     if (moving) {
       this.lastDirection = direction;
