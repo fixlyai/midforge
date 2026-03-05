@@ -154,6 +154,21 @@ export class WorldScene extends Phaser.Scene {
   private brigandRespawnTimer: Phaser.Time.TimerEvent | null = null;
   private brigandEncounterCooldown = 0;
 
+  // Shooting Star — silent random event
+  private readonly STAR_MIN_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
+  private readonly STAR_MAX_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+  private readonly STAR_LANDING_DURATION_MS = 3 * 60 * 1000; // 3 minutes
+  private readonly STAR_LANDING_PICKUP_DIST = 22;
+  private readonly STAR_XP_REWARD = 75;
+  private starTimer: Phaser.Time.TimerEvent | null = null;
+  private starLanding: {
+    glow: Phaser.GameObjects.Arc;
+    pulse: Phaser.GameObjects.Arc;
+    x: number; y: number;
+    active: boolean;
+    expireTimer: Phaser.Time.TimerEvent | null;
+  } | null = null;
+
   // Ambient dialogue cooldowns (NPC name → last trigger time)
   private ambientCooldowns = new Map<string, number>();
   private readonly AMBIENT_COOLDOWN_MS = 30_000; // 30 seconds per NPC
@@ -302,6 +317,9 @@ export class WorldScene extends Phaser.Scene {
 
     // ── Brigands — hostile encounter NPCs ──
     this.spawnBrigands();
+
+    // ── Shooting Star — silent random event ──
+    this.initShootingStar();
 
     this.connectMultiplayer(playerData);
     this.game.events.emit('world_ready');
@@ -1353,6 +1371,7 @@ export class WorldScene extends Phaser.Scene {
     this.checkZoneEntry();
     this.checkXpNuggetPickup();
     this.checkBrigandEncounter();
+    this.checkStarLandingPickup();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1788,6 +1807,182 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  SHOOTING STAR — silent random discovery event
+  // ═══════════════════════════════════════════════════════════
+  private initShootingStar() {
+    this.scheduleNextStar();
+  }
+
+  private scheduleNextStar() {
+    const delay = this.STAR_MIN_INTERVAL_MS + Math.random() * (this.STAR_MAX_INTERVAL_MS - this.STAR_MIN_INTERVAL_MS);
+    this.starTimer = this.time.addEvent({
+      delay,
+      callback: () => this.fireShootingStar(),
+    });
+  }
+
+  private fireShootingStar() {
+    if (!this.player) { this.scheduleNextStar(); return; }
+
+    // Create streak start/end points — diagonal across the visible area
+    const cam = this.cameras.main;
+    const startX = cam.scrollX + Math.random() * cam.width * 0.3;
+    const startY = cam.scrollY + 10 + Math.random() * 30;
+    const endX = cam.scrollX + cam.width * 0.6 + Math.random() * cam.width * 0.4;
+    const endY = cam.scrollY + cam.height * 0.4 + Math.random() * cam.height * 0.3;
+
+    // The streak — a bright white circle that flies diagonally
+    const star = this.add.circle(startX, startY, 3, 0xFFFFFF, 1).setDepth(200);
+    const trail1 = this.add.circle(startX, startY, 2, 0xFFFFFF, 0.6).setDepth(199);
+    const trail2 = this.add.circle(startX, startY, 1.5, 0xF39C12, 0.4).setDepth(198);
+
+    const duration = 1800 + Math.random() * 400;
+
+    // Main star
+    this.tweens.add({
+      targets: star,
+      x: endX, y: endY,
+      duration,
+      ease: 'Sine.easeIn',
+      onComplete: () => star.destroy(),
+    });
+
+    // Trail particles follow with delay
+    this.tweens.add({
+      targets: trail1,
+      x: endX, y: endY,
+      duration,
+      delay: 60,
+      ease: 'Sine.easeIn',
+      onUpdate: () => trail1.setAlpha(trail1.alpha * 0.995),
+      onComplete: () => trail1.destroy(),
+    });
+
+    this.tweens.add({
+      targets: trail2,
+      x: endX, y: endY,
+      duration,
+      delay: 120,
+      ease: 'Sine.easeIn',
+      onUpdate: () => trail2.setAlpha(trail2.alpha * 0.99),
+      onComplete: () => trail2.destroy(),
+    });
+
+    // After streak finishes, create a faint landing glow
+    this.time.delayedCall(duration + 200, () => {
+      this.createStarLanding(endX, endY);
+    });
+
+    // Schedule next star
+    this.scheduleNextStar();
+  }
+
+  private createStarLanding(x: number, y: number) {
+    // Clean up any existing landing
+    this.removeStarLanding();
+
+    // Faint amber glow at landing site
+    const glow = this.add.circle(x, y, 10, 0xF39C12, 0.08).setDepth(5);
+    const pulse = this.add.circle(x, y, 5, 0xFFFFFF, 0.15).setDepth(6);
+
+    // Subtle pulse animation — players need to notice this on their own
+    this.tweens.add({
+      targets: pulse,
+      scaleX: 1.8, scaleY: 1.8, alpha: 0.04,
+      duration: 1500,
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
+    this.tweens.add({
+      targets: glow,
+      scaleX: 1.4, scaleY: 1.4, alpha: 0.03,
+      duration: 2200,
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
+    // Set landing state
+    const expireTimer = this.time.addEvent({
+      delay: this.STAR_LANDING_DURATION_MS,
+      callback: () => this.removeStarLanding(),
+    });
+
+    this.starLanding = { glow, pulse, x, y, active: true, expireTimer };
+  }
+
+  private removeStarLanding() {
+    if (!this.starLanding) return;
+    this.tweens.killTweensOf(this.starLanding.glow);
+    this.tweens.killTweensOf(this.starLanding.pulse);
+    this.starLanding.glow.destroy();
+    this.starLanding.pulse.destroy();
+    this.starLanding.expireTimer?.remove();
+    this.starLanding = null;
+  }
+
+  private checkStarLandingPickup() {
+    if (!this.player || !this.starLanding?.active) return;
+
+    const dx = this.player.x - this.starLanding.x;
+    const dy = this.player.y - this.starLanding.y;
+    if (dx * dx + dy * dy > this.STAR_LANDING_PICKUP_DIST * this.STAR_LANDING_PICKUP_DIST) return;
+
+    // Collected!
+    this.starLanding.active = false;
+    const landing = this.starLanding;
+
+    // Burst animation
+    this.tweens.add({
+      targets: [landing.glow, landing.pulse],
+      scaleX: 4, scaleY: 4, alpha: 0,
+      duration: 400, ease: 'Power2',
+      onComplete: () => this.removeStarLanding(),
+    });
+
+    // Sparkle particles — 6 small white dots burst outward
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const sparkle = this.add.circle(landing.x, landing.y, 2, 0xFFFFFF, 0.9).setDepth(201);
+      this.tweens.add({
+        targets: sparkle,
+        x: landing.x + Math.cos(angle) * 30,
+        y: landing.y + Math.sin(angle) * 30,
+        alpha: 0,
+        duration: 500,
+        ease: 'Power2',
+        onComplete: () => sparkle.destroy(),
+      });
+    }
+
+    // Floating text
+    const txt = this.add.text(
+      landing.x, landing.y - 10,
+      `+${this.STAR_XP_REWARD} XP ✨ Star Fragment`,
+      { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#FFFFFF', stroke: '#000000', strokeThickness: 3, resolution: 4 }
+    ).setOrigin(0.5).setDepth(202);
+
+    this.tweens.add({
+      targets: txt,
+      y: txt.y - 50, alpha: 0,
+      duration: 3000, ease: 'Power2',
+      onComplete: () => txt.destroy(),
+    });
+
+    // White screen flash
+    this.flashScreen(0xFFFFFF, 150);
+
+    // Award XP via API
+    fetch('/api/player/award-xp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: this.STAR_XP_REWARD, source: 'star_fragment' }),
+    }).then(res => res.json()).then(data => {
+      if (data.newXP !== undefined) {
+        this.game.events.emit('xp_updated', data.newXP);
+      }
+    }).catch(() => {});
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  ZONE ENTRY DETECTION (FIX 6 — slide-in location banner)
   // ═══════════════════════════════════════════════════════════
   private checkZoneEntry() {
@@ -1894,5 +2089,7 @@ export class WorldScene extends Phaser.Scene {
     this.brigands.forEach(b => { b.sprite.destroy(); b.excl.destroy(); b.glow.destroy(); });
     this.brigands = [];
     this.brigandRespawnTimer?.remove();
+    this.starTimer?.remove();
+    this.removeStarLanding();
   }
 }
