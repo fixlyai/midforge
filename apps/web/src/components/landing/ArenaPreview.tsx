@@ -2,14 +2,61 @@
 
 import { useEffect, useState } from 'react';
 
-const FIGHT_DURATION = 8000; // 8 second loop
 const ATTACK_INTERVAL = 1200;
+
+// LPC sprite sheets: 576×256px, 64×64 frames, 9 cols × 4 rows
+// Row 0=UP, 1=LEFT, 2=DOWN, 3=RIGHT
+const FRAME_SIZE = 64;
+const FRAMES_PER_ROW = 9;
+const SPRITE_SCALE = 1.8; // 64 × 1.8 = ~115px display size
+const DISPLAY_SIZE = FRAME_SIZE * SPRITE_SCALE;
+
+// CSS sprite animation: cycle through 9 frames in a row
+// Row 3 (RIGHT) for left fighter facing right, Row 1 (LEFT) for right fighter facing left
+const ROW_RIGHT = 3; // walk right
+const ROW_LEFT = 1;  // walk left
+const ROW_DOWN = 2;  // idle / facing camera
 
 interface FighterState {
   hp: number;
   maxHp: number;
   attacking: boolean;
   hit: boolean;
+}
+
+function LpcSprite({
+  sheet,
+  row,
+  animate,
+  defeated,
+}: {
+  sheet: string;
+  row: number;
+  animate: boolean;
+  defeated?: boolean;
+}) {
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    if (!animate) { setFrame(0); return; }
+    const id = setInterval(() => setFrame((f) => (f + 1) % FRAMES_PER_ROW), 100);
+    return () => clearInterval(id);
+  }, [animate]);
+
+  return (
+    <div
+      style={{
+        width: DISPLAY_SIZE,
+        height: DISPLAY_SIZE,
+        backgroundImage: `url(${sheet})`,
+        backgroundSize: `${576 * SPRITE_SCALE}px ${256 * SPRITE_SCALE}px`,
+        backgroundPosition: `-${frame * FRAME_SIZE * SPRITE_SCALE}px -${row * FRAME_SIZE * SPRITE_SCALE}px`,
+        imageRendering: 'pixelated' as const,
+        opacity: defeated ? 0.3 : 1,
+        transition: 'opacity 0.5s',
+      }}
+    />
+  );
 }
 
 export function ArenaPreview() {
@@ -32,7 +79,6 @@ export function ArenaPreview() {
       setShowXp(false);
       setTick(0);
 
-      // After 1.5s intro, start fighting
       timeout = setTimeout(() => {
         setPhase('fight');
         let t = 0;
@@ -54,7 +100,6 @@ export function ArenaPreview() {
             setLeft((p) => ({ ...p, attacking: false, hit: true, hp: lHp }));
           }
 
-          // Reset attack state after 300ms
           setTimeout(() => {
             setLeft((p) => ({ ...p, attacking: false, hit: false }));
             setRight((p) => ({ ...p, attacking: false, hit: false }));
@@ -62,15 +107,12 @@ export function ArenaPreview() {
 
           setTick(t);
 
-          // Check for KO
           if (lHp <= 0 || rHp <= 0) {
             clearInterval(interval);
             const w = lHp > 0 ? 'left' : 'right';
             setWinner(w);
             setPhase('result');
             setShowXp(true);
-
-            // Restart loop after 2.5s
             timeout = setTimeout(startLoop, 2500);
           }
         }, ATTACK_INTERVAL);
@@ -84,6 +126,8 @@ export function ArenaPreview() {
       clearTimeout(timeout);
     };
   }, []);
+
+  const fighting = phase === 'fight' || phase === 'result';
 
   return (
     <div
@@ -101,7 +145,7 @@ export function ArenaPreview() {
       {/* Arena stage */}
       <div
         className="relative rounded border border-forge-dark mx-auto overflow-hidden"
-        style={{ height: 'clamp(200px, 40vw, 280px)', maxWidth: 660, background: '#0a0818', imageRendering: 'pixelated' as const }}
+        style={{ height: 'clamp(220px, 40vw, 300px)', maxWidth: 660, background: '#0a0818', imageRendering: 'pixelated' as const }}
       >
         {/* Grid floor */}
         <div
@@ -113,7 +157,7 @@ export function ArenaPreview() {
           }}
         />
 
-        {/* VS text — always visible during fight */}
+        {/* VS text */}
         {(phase === 'intro' || phase === 'fight') && (
           <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
             <span
@@ -128,31 +172,29 @@ export function ArenaPreview() {
           </div>
         )}
 
-        {/* Left fighter (Warrior — red) */}
+        {/* Left fighter (Warrior — walks RIGHT toward opponent) */}
         <div
-          className="absolute z-10 transition-transform duration-200"
+          className="absolute z-10"
           style={{
-            left: phase === 'intro' ? '12%' : '25%',
+            left: phase === 'intro' ? '8%' : '20%',
             bottom: 50,
             transition: 'left 0.8s ease-out',
             animation: left.attacking ? 'slash-left 0.3s ease-out' : left.hit ? 'hit-flash 0.2s' : 'none',
           }}
         >
-          {/* Name + tier badge */}
-          <div className="text-center mb-2" style={{ width: 120, marginLeft: -35 }}>
+          <div className="text-center mb-1" style={{ width: DISPLAY_SIZE }}>
             <p className="font-pixel text-[7px] sm:text-[8px] text-forge-red truncate">@indie_builder</p>
             <span
               className="inline-block font-pixel text-[5px] sm:text-[6px] px-2 py-0.5 rounded mt-0.5"
               style={{ backgroundColor: 'rgba(231,76,60,0.2)', color: '#E74C3C', border: '1px solid rgba(231,76,60,0.3)' }}
             >
-              ⚔️ WARRIOR
+              WARRIOR
             </span>
           </div>
-          {/* HP bar — RPG style */}
-          <div className="mx-auto mb-2" style={{ width: 60 }}>
+          <div className="mx-auto mb-1" style={{ width: 60 }}>
             <div className="h-2 bg-forge-dark/90 border border-forge-amber/30 rounded-sm overflow-hidden" style={{ width: 60 }}>
               <div
-                className={`h-full transition-all duration-300 relative ${left.attacking ? 'hp-bar-active' : ''}`}
+                className="h-full transition-all duration-300"
                 style={{
                   width: `${left.hp}%`,
                   backgroundColor: left.hp > 50 ? '#E74C3C' : left.hp > 25 ? '#F39C12' : '#E74C3C',
@@ -161,78 +203,60 @@ export function ArenaPreview() {
             </div>
             <p className="font-pixel text-[5px] text-forge-wheat/30 text-center mt-0.5">{left.hp}/100</p>
           </div>
-          {/* Body */}
-          <div className="flex flex-col items-center">
-            <div className="w-4 h-4 sm:w-5 sm:h-5 bg-[#E74C3C] opacity-80" />
-            <div className="w-5 h-8 sm:w-6 sm:h-10 bg-[#E74C3C]" />
-            <div className="flex gap-px">
-              <div className="w-2 h-4 sm:w-2.5 sm:h-5 bg-[#E74C3C] opacity-70" />
-              <div className="w-2 h-4 sm:w-2.5 sm:h-5 bg-[#E74C3C] opacity-70" />
-            </div>
-          </div>
-          {/* Sword */}
-          <div
-            className="absolute w-1 h-6 sm:h-7 bg-forge-wheat/80"
-            style={{ right: -8, top: 48, transform: 'rotate(-30deg)' }}
+          <LpcSprite
+            sheet="/sprites/characters/warrior_base.png"
+            row={fighting ? ROW_RIGHT : ROW_DOWN}
+            animate={fighting && !winner}
+            defeated={winner === 'right'}
           />
         </div>
 
-        {/* Right fighter (Merchant — purple) */}
+        {/* Right fighter (Merchant — walks LEFT toward opponent) */}
         <div
-          className="absolute z-10 transition-transform duration-200"
+          className="absolute z-10"
           style={{
-            right: phase === 'intro' ? '12%' : '25%',
+            right: phase === 'intro' ? '8%' : '20%',
             bottom: 50,
             transition: 'right 0.8s ease-out',
             animation: right.attacking ? 'slash-right 0.3s ease-out' : right.hit ? 'hit-flash 0.2s' : 'none',
           }}
         >
-          {/* Name + tier badge */}
-          <div className="text-center mb-2" style={{ width: 120, marginLeft: -35 }}>
+          <div className="text-center mb-1" style={{ width: DISPLAY_SIZE }}>
             <p className="font-pixel text-[7px] sm:text-[8px] text-forge-purple truncate">@solofounder</p>
             <span
               className="inline-block font-pixel text-[5px] sm:text-[6px] px-2 py-0.5 rounded mt-0.5"
               style={{ backgroundColor: 'rgba(123,104,238,0.2)', color: '#7B68EE', border: '1px solid rgba(123,104,238,0.3)' }}
             >
-              💰 MERCHANT
+              MERCHANT
             </span>
           </div>
-          {/* HP bar — RPG style */}
-          <div className="mx-auto mb-2" style={{ width: 60 }}>
+          <div className="mx-auto mb-1" style={{ width: 60 }}>
             <div className="h-2 bg-forge-dark/90 border border-forge-amber/30 rounded-sm overflow-hidden" style={{ width: 60 }}>
               <div
-                className={`h-full transition-all duration-300 relative ${right.attacking ? 'hp-bar-active' : ''}`}
+                className="h-full transition-all duration-300"
                 style={{
                   width: `${right.hp}%`,
-                  backgroundColor: right.hp > 50 ? '#E74C3C' : right.hp > 25 ? '#F39C12' : '#E74C3C',
+                  backgroundColor: right.hp > 50 ? '#7B68EE' : right.hp > 25 ? '#F39C12' : '#E74C3C',
                 }}
               />
             </div>
             <p className="font-pixel text-[5px] text-forge-wheat/30 text-center mt-0.5">{right.hp}/100</p>
           </div>
-          {/* Body */}
-          <div className="flex flex-col items-center">
-            <div className="w-4 h-4 sm:w-5 sm:h-5 bg-[#7B68EE] opacity-80" />
-            <div className="w-5 h-8 sm:w-6 sm:h-10 bg-[#7B68EE]" />
-            <div className="flex gap-px">
-              <div className="w-2 h-4 sm:w-2.5 sm:h-5 bg-[#7B68EE] opacity-70" />
-              <div className="w-2 h-4 sm:w-2.5 sm:h-5 bg-[#7B68EE] opacity-70" />
-            </div>
-          </div>
-          {/* Sword */}
-          <div
-            className="absolute w-1 h-6 sm:h-7 bg-forge-wheat/80"
-            style={{ left: -8, top: 48, transform: 'rotate(30deg)' }}
+          <LpcSprite
+            sheet="/sprites/characters/merchant_base.png"
+            row={fighting ? ROW_LEFT : ROW_DOWN}
+            animate={fighting && !winner}
+            defeated={winner === 'left'}
           />
         </div>
 
-        {/* XP float text on winner */}
+        {/* XP float */}
         {showXp && winner && (
           <div
             className="absolute z-30 font-pixel text-[10px] sm:text-xs text-forge-amber"
             style={{
               [winner === 'left' ? 'left' : 'right']: '25%',
-              bottom: 160,
+              bottom: 180,
               animation: 'xp-float 1.5s ease-out forwards',
               textShadow: '0 0 10px rgba(243,156,18,0.5)',
             }}
@@ -241,7 +265,7 @@ export function ArenaPreview() {
           </div>
         )}
 
-        {/* Winner flash */}
+        {/* Winner */}
         {winner && (
           <div className="absolute inset-0 z-20 flex items-end justify-center pb-3">
             <span className="font-pixel text-[9px] sm:text-sm text-forge-amber animate-pulse">
@@ -250,7 +274,7 @@ export function ArenaPreview() {
           </div>
         )}
 
-        {/* Floor line */}
+        {/* Floor */}
         <div className="absolute bottom-10 left-0 right-0 h-px bg-forge-amber/20" />
         <div className="absolute bottom-0 left-0 right-0 h-10 bg-forge-dark/60" />
       </div>
