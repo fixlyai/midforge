@@ -1,10 +1,12 @@
 // @ts-ignore — Phaser exports default from ESM build
 import Phaser from 'phaser';
-import { TILE_SIZE } from '@midforge/shared/constants/game';
+import { TILE_SIZE, FORM_UNLOCK_XP } from '@midforge/shared/constants/game';
 
 export class UIScene extends Phaser.Scene {
   private hpBar!: Phaser.GameObjects.Graphics;
   private xpBar!: Phaser.GameObjects.Graphics;
+  private xpBarFill!: Phaser.GameObjects.Graphics;
+  private xpLabel!: Phaser.GameObjects.Text;
 
   // Minimap (FIX 5)
   private minimapPlayer!: Phaser.GameObjects.Rectangle;
@@ -53,13 +55,26 @@ export class UIScene extends Phaser.Scene {
       color: '#E74C3C', resolution: R,
     });
 
-    // XP bar
+    // XP bar — shows progress toward next form
     this.xpBar = this.add.graphics();
-    const xpProgress = Math.min(1, (xp % 1000) / 1000);
-    this.drawBar(this.xpBar, 16, 42, 120, 8, xpProgress, 0x4A90D9);
-    this.add.text(140, 42, 'XP', {
+    this.xpBarFill = this.add.graphics();
+    const formThresholds = FORM_UNLOCK_XP[tier] ?? { upgraded: 300, ascended: 1000 };
+    const form = playerData?.characterForm ?? 'base';
+    const prevXP = form === 'base' ? 0 : form === 'upgraded' ? formThresholds.upgraded : formThresholds.ascended;
+    const nextXP = form === 'base' ? formThresholds.upgraded : form === 'upgraded' ? formThresholds.ascended : formThresholds.ascended * 2;
+    const xpProgress = Math.min(1, Math.max(0, (xp - prevXP) / (nextXP - prevXP)));
+    this.drawBar(this.xpBar, 16, 42, 120, 8, 0, 0x4A90D9);
+    this.drawBar(this.xpBarFill, 16, 42, 120, 8, xpProgress, 0x4A90D9);
+    const remaining = Math.max(0, nextXP - xp);
+    const formLabel = form === 'base' ? 'II' : form === 'upgraded' ? 'III' : 'MAX';
+    this.xpLabel = this.add.text(140, 42, formLabel === 'MAX' ? 'MAX' : `${remaining}`, {
       fontSize: '6px', fontFamily: '"Press Start 2P", monospace',
       color: '#4A90D9', resolution: R,
+    });
+
+    // Listen for XP updates to animate the bar
+    this.game.events.on('xp_updated', (data: { xp: number; tier: string; form: string }) => {
+      this.updateXPBar(data.xp, data.tier, data.form);
     });
 
     // Gold + MRR
@@ -302,6 +317,32 @@ export class UIScene extends Phaser.Scene {
 
     this.questTrackerText.setText(label).setVisible(true);
     this.questTrackerBg.setVisible(true);
+  }
+
+  private updateXPBar(currentXP: number, tier: string, form: string) {
+    const thresholds = FORM_UNLOCK_XP[tier] ?? { upgraded: 300, ascended: 1000 };
+    const prevXP = form === 'base' ? 0 : form === 'upgraded' ? thresholds.upgraded : thresholds.ascended;
+    const nextXP = form === 'base' ? thresholds.upgraded : form === 'upgraded' ? thresholds.ascended : thresholds.ascended * 2;
+    const progress = Math.min(1, Math.max(0, (currentXP - prevXP) / (nextXP - prevXP)));
+
+    // Animate bar fill
+    this.xpBarFill.clear();
+    this.xpBarFill.fillStyle(0x1a0a2e, 1);
+    this.xpBarFill.fillRect(16, 42, 120, 8);
+    this.xpBarFill.fillStyle(0x4A90D9, 1);
+    this.xpBarFill.fillRect(16, 42, 120 * progress, 8);
+    this.xpBarFill.lineStyle(1, 0xF39C12, 0.3);
+    this.xpBarFill.strokeRect(16, 42, 120, 8);
+
+    // Update label
+    const remaining = Math.max(0, nextXP - currentXP);
+    const formLabel = form === 'base' ? 'II' : form === 'upgraded' ? 'III' : 'MAX';
+    this.xpLabel.setText(formLabel === 'MAX' ? 'MAX' : `${remaining}`);
+
+    // Flash amber at milestones
+    if (progress >= 0.9 && progress < 1) {
+      this.xpLabel.setColor('#F39C12');
+    }
   }
 
   private drawBar(graphics: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, pct: number, color: number) {

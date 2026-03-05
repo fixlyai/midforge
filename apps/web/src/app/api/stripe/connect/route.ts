@@ -6,9 +6,17 @@ import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { calculateTier } from '@midforge/shared/types';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-04-10' as any,
-});
+// Lazy-init: Stripe client must NOT be created at module scope
+// because env vars aren't available during Next.js build (page data collection)
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!_stripe) {
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: '2024-04-10' as any,
+    });
+  }
+  return _stripe;
+}
 
 // GET — initiate Stripe Connect OAuth (redirect URL)
 export async function GET() {
@@ -25,7 +33,7 @@ export async function GET() {
   // Create Stripe Connect account link (Standard Connect)
   try {
     // Create a connected account if none exists
-    const account = await stripe.accounts.create({
+    const account = await getStripe().accounts.create({
       type: 'standard',
       metadata: { midforge_player_id: player.id },
     });
@@ -37,7 +45,7 @@ export async function GET() {
 
     // Generate onboarding link
     const baseUrl = process.env.NEXTAUTH_URL || 'https://midforgegame.com';
-    const accountLink = await stripe.accountLinks.create({
+    const accountLink = await getStripe().accountLinks.create({
       account: account.id,
       refresh_url: `${baseUrl}/world?stripe=refresh`,
       return_url: `${baseUrl}/world?stripe=connected`,
@@ -63,7 +71,7 @@ export async function POST() {
 
   try {
     // Fetch MRR from Stripe — sum of active subscription amounts
-    const subscriptions = await stripe.subscriptions.list(
+    const subscriptions = await getStripe().subscriptions.list(
       { status: 'active', limit: 100 },
       { stripeAccount: player.stripeAccountId },
     );

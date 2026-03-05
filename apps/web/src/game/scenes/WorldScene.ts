@@ -982,27 +982,29 @@ export class WorldScene extends Phaser.Scene {
 
   private showTypewriterDialogue(lines: string[], onComplete: () => void) {
     const cam = this.cameras.main;
-    const boxH = 50;
+    const boxH = 58;
     const boxW = cam.width;
+    // Position dialogue box 8px above the bottom edge (above mobile control panel border)
+    const boxY = cam.height - boxH - 8;
 
-    const bg = this.add.rectangle(boxW / 2, cam.height - boxH / 2, boxW, boxH, 0x0d0a1e, 0.9)
-      .setScrollFactor(0).setDepth(200);
-    const border = this.add.rectangle(boxW / 2, cam.height - boxH, boxW, 2, 0xF39C12, 0.8)
-      .setScrollFactor(0).setDepth(201);
+    const bg = this.add.rectangle(boxW / 2, boxY + boxH / 2, boxW, boxH, 0x0d0a1e, 0.95)
+      .setScrollFactor(0).setDepth(600);
+    const border = this.add.rectangle(boxW / 2, boxY, boxW, 2, 0xF39C12, 0.8)
+      .setScrollFactor(0).setDepth(601);
 
-    this.dialogueText = this.add.text(16, cam.height - boxH + 10, '', TEXT_STYLES.dialogue)
-      .setScrollFactor(0).setDepth(202);
+    this.dialogueText = this.add.text(16, boxY + 10, '', TEXT_STYLES.dialogue)
+      .setScrollFactor(0).setDepth(602);
 
-    const advanceHint = this.add.text(boxW - 16, cam.height - 10, '[SPACE]', {
+    const advanceHint = this.add.text(boxW - 16, boxY + boxH - 8, '[SPACE]', {
       fontSize: '4px',
       fontFamily: '"Press Start 2P", monospace',
       color: '#F39C12',
       stroke: '#000000',
       strokeThickness: 1,
-    }).setOrigin(1, 1).setScrollFactor(0).setDepth(202).setAlpha(0);
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(602).setAlpha(0);
 
     this.dialogueBox = this.add.container(0, 0, [bg, border, this.dialogueText, advanceHint])
-      .setDepth(200);
+      .setDepth(600);
 
     let lineIndex = 0;
     const showLine = () => {
