@@ -5,10 +5,11 @@ import {
   CAMERA_ZOOM, CAMERA_LERP,
   PLAYER_SPEED, PLAYER_HITBOX, PLAYER_DEPTH, PLAYER_LABEL_DEPTH,
   NPC_INTERACT_DISTANCE, FOOTSTEP_TILE_INTERVAL,
-  TILESHEET_TOWN, TILESHEET_DUNGEON,
+  TILESHEET_TOWN, TILESHEET_BATTLE, TILESHEET_DUNGEON,
   FIRSTGID_TOWN, FIRSTGID_DUNGEON,
   TIER_SPRITE_MAP, TIER_COLORS,
   NPC_SPRITE_NAMES, NPC_TYPE_EVENT,
+  ANIMATED_TILES, WANDERING_NPC,
   INTRO, TEXT_STYLES,
 } from '@midforge/shared/constants/game';
 
@@ -82,6 +83,24 @@ export class WorldScene extends Phaser.Scene {
   private fogLabels: Phaser.GameObjects.Text[] = [];
   private zoneOverlaps: Phaser.GameObjects.Zone[] = [];
 
+  // Animated tiles
+  private animatedTileSprites: { sprite: Phaser.GameObjects.Image; frames: number[]; sheet: string; frameIndex: number }[] = [];
+  private campfireGlows: Phaser.GameObjects.Graphics[] = [];
+  private waterTileSprites: { sprite: Phaser.GameObjects.Image; frames: number[]; sheet: string; frameIndex: number; staggerOffset: number }[] = [];
+
+  // Wandering NPCs
+  private wanderingNpcs: {
+    sprite: Phaser.GameObjects.Image;
+    label: Phaser.GameObjects.Text;
+    originX: number; originY: number;
+    state: 'idle' | 'walking';
+    targetX: number; targetY: number;
+    timer: Phaser.Time.TimerEvent | null;
+  }[] = [];
+
+  // Map transition zones
+  private transitionZones: { zone: Phaser.GameObjects.Zone; targetMap: string }[] = [];
+
   // Spawn points from map
   private spawnDefault = { x: 624, y: 736 };
   private spawnNewGame = { x: 624, y: 240 };
@@ -118,6 +137,8 @@ export class WorldScene extends Phaser.Scene {
     this.parseSpawnPoints(mapData);
     this.spawnNpcsFromMap(mapData);
     this.parseZones(mapData);
+    this.initAnimatedTiles(mapData);
+    this.initWanderingNpcs();
 
     // ── Player ──────────────────────────────────────────
     const isFirstLogin = playerData?.firstLogin !== false;
@@ -343,6 +364,227 @@ export class WorldScene extends Phaser.Scene {
         (zone.body as Phaser.Physics.Arcade.Body).moves = false;
         zone.setData('zoneType', 'social_hub');
         this.zoneOverlaps.push(zone);
+      }
+
+      if (zoneType === 'map_transition') {
+        const targetMap = getProp(obj, 'targetMap') ?? '';
+        const zone = this.add.zone(
+          obj.x + obj.width / 2,
+          obj.y + obj.height / 2,
+          obj.width,
+          obj.height
+        );
+        this.physics.world.enable(zone);
+        (zone.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+        (zone.body as Phaser.Physics.Arcade.Body).moves = false;
+        zone.setData('zoneType', 'map_transition');
+        zone.setData('targetMap', targetMap);
+        this.transitionZones.push({ zone, targetMap });
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  ANIMATED TILES — campfire + water frame cycling
+  // ═══════════════════════════════════════════════════════════
+  private initAnimatedTiles(map: TmjMap) {
+    // ── Campfire — place animated fire sprite at the social_hub zone center ──
+    const zonesLayer = map.layers.find(l => l.name === 'Zones' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    if (zonesLayer) {
+      for (const obj of zonesLayer.objects) {
+        const zoneType = getProp(obj, 'zoneType') ?? '';
+        if (zoneType === 'social_hub') {
+          const cx = obj.x + obj.width / 2;
+          const cy = obj.y + obj.height / 2;
+          const cfg = ANIMATED_TILES.campfire;
+
+          // Campfire sprite (cycles frames)
+          const fireSprite = this.add.image(cx, cy, cfg.sheet, cfg.frames[0]).setDepth(5);
+          this.animatedTileSprites.push({
+            sprite: fireSprite,
+            frames: [...cfg.frames],
+            sheet: cfg.sheet,
+            frameIndex: 0,
+          });
+
+          // Warm glow circle beneath the fire
+          const glow = this.add.graphics();
+          glow.fillStyle(cfg.glowColor, cfg.glowAlpha);
+          glow.fillCircle(cx, cy, cfg.glowRadius);
+          glow.setDepth(4);
+          this.campfireGlows.push(glow);
+
+          // Pulsing glow tween
+          this.tweens.add({
+            targets: glow,
+            alpha: { from: 0.6, to: 1.0 },
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut',
+          });
+        }
+      }
+    }
+
+    // ── Water — animate any ground GIDs 25/26 (sand/water edge tiles) ──
+    // Also animate the pond_area zone with water tile overlays
+    if (zonesLayer) {
+      for (const obj of zonesLayer.objects) {
+        const zoneType = getProp(obj, 'zoneType') ?? '';
+        if (zoneType === 'ambient_water') {
+          const cfg = ANIMATED_TILES.water;
+          const ts = map.tilewidth;
+          const startCol = Math.floor(obj.x / ts);
+          const startRow = Math.floor(obj.y / ts);
+          const endCol = Math.ceil((obj.x + obj.width) / ts);
+          const endRow = Math.ceil((obj.y + obj.height) / ts);
+
+          let tileIndex = 0;
+          for (let r = startRow; r < endRow; r++) {
+            for (let c = startCol; c < endCol; c++) {
+              const gid = this.groundData[r * this.mapCols + c] ?? 0;
+              // Only animate sand/water-edge tiles (GIDs 25, 26)
+              if (gid === 25 || gid === 26) {
+                const px = c * ts + ts / 2;
+                const py = r * ts + ts / 2;
+                const startFrame = tileIndex % cfg.frames.length;
+                const waterSprite = this.add.image(px, py, cfg.sheet, cfg.frames[startFrame]).setDepth(1).setAlpha(0.5);
+                this.waterTileSprites.push({
+                  sprite: waterSprite,
+                  frames: [...cfg.frames],
+                  sheet: cfg.sheet,
+                  frameIndex: startFrame,
+                  staggerOffset: tileIndex * cfg.staggerMs,
+                });
+                tileIndex++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ── Start frame cycling timers ──
+    // Campfire frame cycle
+    if (this.animatedTileSprites.length > 0) {
+      const cfgFire = ANIMATED_TILES.campfire;
+      this.time.addEvent({
+        delay: 1000 / cfgFire.frameRate,
+        loop: true,
+        callback: () => {
+          for (const entry of this.animatedTileSprites) {
+            entry.frameIndex = (entry.frameIndex + 1) % entry.frames.length;
+            entry.sprite.setFrame(entry.frames[entry.frameIndex]);
+          }
+        },
+      });
+    }
+
+    // Water frame cycle (staggered)
+    if (this.waterTileSprites.length > 0) {
+      const cfgWater = ANIMATED_TILES.water;
+      this.time.addEvent({
+        delay: 1000 / cfgWater.frameRate,
+        loop: true,
+        callback: () => {
+          for (const entry of this.waterTileSprites) {
+            entry.frameIndex = (entry.frameIndex + 1) % entry.frames.length;
+            entry.sprite.setFrame(entry.frames[entry.frameIndex]);
+          }
+        },
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  WANDERING NPCs — random walk AI for ambient NPCs
+  // ═══════════════════════════════════════════════════════════
+  private initWanderingNpcs() {
+    this.npcSprites.forEach((sprite, npcId) => {
+      const isWanderer = sprite.getData('wandering') === true;
+      if (!isWanderer) return;
+
+      const label = this.npcLabels.get(npcId);
+      if (!label) return;
+
+      const entry = {
+        sprite,
+        label,
+        originX: sprite.x,
+        originY: sprite.y,
+        state: 'idle' as const,
+        targetX: sprite.x,
+        targetY: sprite.y,
+        timer: null as Phaser.Time.TimerEvent | null,
+      };
+
+      this.wanderingNpcs.push(entry);
+      this.scheduleWanderAction(entry);
+    });
+  }
+
+  private scheduleWanderAction(entry: typeof this.wanderingNpcs[number]) {
+    const cfg = WANDERING_NPC;
+    if (entry.state === 'idle') {
+      // After a random pause, pick a new walk target
+      const pauseDuration = cfg.pauseMin + Math.random() * (cfg.pauseMax - cfg.pauseMin);
+      entry.timer = this.time.delayedCall(pauseDuration, () => {
+        // Pick random point within maxRadius of origin
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * cfg.maxRadius;
+        entry.targetX = entry.originX + Math.cos(angle) * dist;
+        entry.targetY = entry.originY + Math.sin(angle) * dist;
+        entry.state = 'walking';
+
+        const dx = entry.targetX - entry.sprite.x;
+        const dy = entry.targetY - entry.sprite.y;
+        const walkDist = Math.sqrt(dx * dx + dy * dy);
+        const walkDuration = Math.max(500, (walkDist / cfg.speed) * 1000);
+
+        this.tweens.add({
+          targets: entry.sprite,
+          x: entry.targetX,
+          y: entry.targetY,
+          duration: walkDuration,
+          ease: 'Linear',
+          onUpdate: () => {
+            entry.label.setPosition(entry.sprite.x, entry.sprite.y - 14);
+          },
+          onComplete: () => {
+            entry.state = 'idle';
+            this.scheduleWanderAction(entry);
+          },
+        });
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  MAP TRANSITION — check player overlap with transition zones
+  // ═══════════════════════════════════════════════════════════
+  private checkMapTransitions() {
+    if (!this.player || this.transitionZones.length === 0) return;
+
+    for (const { zone, targetMap } of this.transitionZones) {
+      const zBody = zone.body as Phaser.Physics.Arcade.Body;
+      const pBody = this.player.body as Phaser.Physics.Arcade.Body;
+
+      if (Phaser.Geom.Intersects.RectangleToRectangle(
+        new Phaser.Geom.Rectangle(pBody.x, pBody.y, pBody.width, pBody.height),
+        new Phaser.Geom.Rectangle(zBody.x, zBody.y, zBody.width, zBody.height)
+      )) {
+        // Emit transition event — React layer or future system handles it
+        // Target map doesn't exist yet; show a toast message instead
+        this.game.events.emit('map_transition', { targetMap });
+
+        // Brief visual feedback
+        this.cameras.main.flash(300, 13, 10, 30);
+        this.inputEnabled = false;
+        this.time.delayedCall(500, () => {
+          this.inputEnabled = true;
+        });
+        return; // Only process one transition per frame
       }
     }
   }
@@ -672,6 +914,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.checkNpcProximity();
+    this.checkMapTransitions();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -728,5 +971,9 @@ export class WorldScene extends Phaser.Scene {
     this.fogGraphics.forEach(g => g.destroy());
     this.fogLabels.forEach(l => l.destroy());
     this.dialogueBox?.destroy();
+    this.animatedTileSprites.forEach(e => e.sprite.destroy());
+    this.campfireGlows.forEach(g => g.destroy());
+    this.waterTileSprites.forEach(e => e.sprite.destroy());
+    this.wanderingNpcs.forEach(w => w.timer?.remove());
   }
 }

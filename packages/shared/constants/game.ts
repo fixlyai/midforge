@@ -171,6 +171,35 @@ export const BATTLE_TILES = {
   waterEdgeB: 37,          // water edge bottom
 } as const;
 
+// ── Animated Tile Definitions ─────────────────────────────────
+// Kenney tiles are static — we simulate animation by cycling frames
+export const ANIMATED_TILES = {
+  campfire: {
+    sheet: 'tiles_dungeon',
+    frames: [68, 69, 73],            // torch, flame, brazier
+    frameRate: 4,                     // frames per second
+    glowColor: 0xF39C12,
+    glowRadius: 32,
+    glowAlpha: 0.15,
+  },
+  water: {
+    sheet: 'tiles_battle',
+    frames: [36, 37, 38, 19],        // wave variants + full water
+    frameRate: 2,                     // slower ripple
+    staggerMs: 200,                   // stagger between adjacent tiles
+  },
+} as const;
+
+// ── Wandering NPC Config ──────────────────────────────────────
+export const WANDERING_NPC = {
+  speed: 20,                           // pixels per second
+  pauseMin: 2000,                      // ms minimum idle pause
+  pauseMax: 5000,                      // ms maximum idle pause
+  walkMin: 1000,                       // ms minimum walk duration
+  walkMax: 3000,                       // ms maximum walk duration
+  maxRadius: 48,                       // max wander radius from spawn (px)
+} as const;
+
 // ── Dungeon Tile Indices (Tiny Dungeon tilemap_packed.png) ───
 // Row 0-3: dungeon floor/wall tiles
 // Row 4-5: furniture, chests, items

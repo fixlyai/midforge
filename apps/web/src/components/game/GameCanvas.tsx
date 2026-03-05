@@ -27,11 +27,17 @@ interface CardData {
 
 type ActivePanel = null | 'quests' | 'inventory' | 'arena' | 'marketplace';
 
+interface ToastData {
+  message: string;
+  key: number;
+}
+
 export function GameCanvas({ playerData }: { playerData: PlayerData }) {
   const gameRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [cardPlayer, setCardPlayer] = useState<CardData | null>(null);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  const [toast, setToast] = useState<ToastData | null>(null);
 
   const handleShowCard = useCallback((data: CardData) => {
     setCardPlayer(data);
@@ -82,6 +88,10 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
       game.events.on('npc_inventory', () => setActivePanel('inventory'));
       game.events.on('npc_arena', () => setActivePanel('arena'));
       game.events.on('npc_marketplace', () => setActivePanel('marketplace'));
+      game.events.on('map_transition', (data: { targetMap: string }) => {
+        setToast({ message: `${data.targetMap.replace('_', ' ')} — coming soon`, key: Date.now() });
+        setTimeout(() => setToast(null), 2500);
+      });
 
       gameRef.current = game;
     }
@@ -110,6 +120,14 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
       {activePanel === 'inventory' && <InventoryPanel onClose={closePanel} />}
       {activePanel === 'arena' && <ArenaPanel onClose={closePanel} />}
       {activePanel === 'marketplace' && <MarketplacePanel onClose={closePanel} />}
+      {toast && (
+        <div
+          key={toast.key}
+          className="absolute top-4 left-1/2 -translate-x-1/2 bg-forge-dark/90 border border-forge-amber/40 px-4 py-2 rounded font-pixel text-[8px] text-forge-amber animate-pulse z-50"
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
