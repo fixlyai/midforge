@@ -131,6 +131,29 @@ export class WorldScene extends Phaser.Scene {
   private readonly XP_NUGGET_PICKUP_DIST = 20;
   private xpNuggetRespawnTimer: Phaser.Time.TimerEvent | null = null;
 
+  // Brigands — hostile encounter NPCs
+  private static readonly BRIGAND_TYPES = [
+    { name: 'Forest Brigand', color: 0x2D5A27, tier: 'villager', levelRange: [1, 3], xpRange: [15, 40], goldRange: [5, 15],
+      zones: [{ x: 380, y: 100, w: 200, h: 300 }, { x: 800, y: 100, w: 160, h: 280 }] },
+    { name: 'Cave Troll', color: 0x6B5B4F, tier: 'apprentice', levelRange: [3, 6], xpRange: [40, 80], goldRange: [15, 30],
+      zones: [{ x: 100, y: 500, w: 250, h: 200 }, { x: 900, y: 550, w: 200, h: 200 }] },
+    { name: 'Deserter Knight', color: 0x8B2500, tier: 'merchant', levelRange: [5, 8], xpRange: [80, 150], goldRange: [30, 60],
+      zones: [{ x: 480, y: 200, w: 300, h: 150 }] },
+  ] as const;
+  private brigands: {
+    sprite: Phaser.GameObjects.Arc;
+    excl: Phaser.GameObjects.Text;
+    glow: Phaser.GameObjects.Arc;
+    x: number; y: number;
+    typeIdx: number;
+    alive: boolean;
+  }[] = [];
+  private readonly BRIGAND_COUNT = 5;
+  private readonly BRIGAND_PICKUP_DIST = 24;
+  private readonly BRIGAND_RESPAWN_MS = 5 * 60 * 1000; // 5 minutes
+  private brigandRespawnTimer: Phaser.Time.TimerEvent | null = null;
+  private brigandEncounterCooldown = 0;
+
   // Ambient dialogue cooldowns (NPC name → last trigger time)
   private ambientCooldowns = new Map<string, number>();
   private readonly AMBIENT_COOLDOWN_MS = 30_000; // 30 seconds per NPC
@@ -276,6 +299,9 @@ export class WorldScene extends Phaser.Scene {
 
     // ── XP Nuggets — glowing discovery orbs ──
     this.spawnXpNuggets();
+
+    // ── Brigands — hostile encounter NPCs ──
+    this.spawnBrigands();
 
     this.connectMultiplayer(playerData);
     this.game.events.emit('world_ready');
@@ -1326,6 +1352,7 @@ export class WorldScene extends Phaser.Scene {
     this.checkMapTransitions();
     this.checkZoneEntry();
     this.checkXpNuggetPickup();
+    this.checkBrigandEncounter();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1608,6 +1635,159 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  BRIGANDS — hostile encounter NPCs on map
+  // ═══════════════════════════════════════════════════════════
+  private spawnBrigands() {
+    for (const b of this.brigands) {
+      b.sprite.destroy(); b.excl.destroy(); b.glow.destroy();
+    }
+    this.brigands = [];
+
+    const types = WorldScene.BRIGAND_TYPES;
+    for (let i = 0; i < this.BRIGAND_COUNT; i++) {
+      const typeIdx = i % types.length;
+      const bType = types[typeIdx];
+      // Pick a random zone for this brigand type
+      const zone = bType.zones[Math.floor(Math.random() * bType.zones.length)];
+      const x = zone.x + Math.random() * zone.w;
+      const y = zone.y + Math.random() * zone.h;
+
+      // Red-tinged circle body
+      const sprite = this.add.circle(x, y, 6, bType.color, 0.85).setDepth(7);
+
+      // Pulsing red glow
+      const glow = this.add.circle(x, y, 14, 0xE74C3C, 0.12).setDepth(6);
+      this.tweens.add({
+        targets: glow,
+        scaleX: 1.6, scaleY: 1.6, alpha: 0.04,
+        duration: 1000 + Math.random() * 400,
+        yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+
+      // Red exclamation mark above
+      const excl = this.add.text(x, y - 16, '!', {
+        fontFamily: '"Press Start 2P"', fontSize: '10px',
+        color: '#E74C3C', stroke: '#000000', strokeThickness: 3, resolution: 4,
+      }).setOrigin(0.5).setDepth(8);
+
+      // Bounce the exclamation
+      this.tweens.add({
+        targets: excl,
+        y: y - 22,
+        duration: 600,
+        yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+
+      this.brigands.push({ sprite, excl, glow, x, y, typeIdx, alive: true });
+    }
+
+    // Schedule respawn
+    this.brigandRespawnTimer = this.time.addEvent({
+      delay: this.BRIGAND_RESPAWN_MS,
+      loop: true,
+      callback: () => this.respawnBrigands(),
+    });
+  }
+
+  private respawnBrigands() {
+    const types = WorldScene.BRIGAND_TYPES;
+    for (const b of this.brigands) {
+      if (b.alive) continue;
+      const bType = types[b.typeIdx];
+      const zone = bType.zones[Math.floor(Math.random() * bType.zones.length)];
+      const x = zone.x + Math.random() * zone.w;
+      const y = zone.y + Math.random() * zone.h;
+      b.x = x; b.y = y; b.alive = true;
+
+      b.sprite.setPosition(x, y).setVisible(true).setAlpha(0.85);
+      b.glow.setPosition(x, y).setVisible(true).setAlpha(0.12);
+      b.excl.setPosition(x, y - 16).setVisible(true);
+
+      this.tweens.add({
+        targets: b.glow,
+        scaleX: 1.6, scaleY: 1.6, alpha: 0.04,
+        duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+      this.tweens.add({
+        targets: b.excl,
+        y: y - 22,
+        duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+    }
+  }
+
+  private checkBrigandEncounter() {
+    if (!this.player) return;
+    const now = this.time.now;
+    if (now < this.brigandEncounterCooldown) return;
+
+    const px = this.player.x;
+    const py = this.player.y;
+
+    for (const b of this.brigands) {
+      if (!b.alive) continue;
+      const dx = px - b.x;
+      const dy = py - b.y;
+      if (dx * dx + dy * dy < this.BRIGAND_PICKUP_DIST * this.BRIGAND_PICKUP_DIST) {
+        this.triggerBrigandFight(b);
+        return;
+      }
+    }
+  }
+
+  private async triggerBrigandFight(brigand: typeof this.brigands[number]) {
+    brigand.alive = false;
+    this.brigandEncounterCooldown = this.time.now + 3000;
+
+    // Kill tweens and hide
+    this.tweens.killTweensOf(brigand.sprite);
+    this.tweens.killTweensOf(brigand.glow);
+    this.tweens.killTweensOf(brigand.excl);
+
+    // Burst animation
+    this.tweens.add({
+      targets: brigand.sprite,
+      scaleX: 3, scaleY: 3, alpha: 0,
+      duration: 300, ease: 'Power2',
+      onComplete: () => brigand.sprite.setVisible(false),
+    });
+    this.tweens.add({
+      targets: [brigand.glow, brigand.excl],
+      alpha: 0, duration: 200,
+      onComplete: () => { brigand.glow.setVisible(false); brigand.excl.setVisible(false); },
+    });
+
+    // Red screen flash
+    this.flashScreen(0xE74C3C, 200);
+
+    // Show encounter banner
+    const bType = WorldScene.BRIGAND_TYPES[brigand.typeIdx];
+    this.game.events.emit('zone_enter_banner', `${bType.name.toUpperCase()} ATTACKS!`);
+
+    // Call ghost fight API to generate the fight
+    try {
+      const res = await fetch('/api/arena/ghost', { method: 'POST' });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Override ghost name/tier with brigand info
+      if (data.fight?.ghost) {
+        data.fight.ghost.username = bType.name;
+        data.fight.ghost.tier = bType.tier;
+      }
+
+      // Emit to React — opens arena panel with brigand fight
+      this.game.events.emit('brigand_encounter', {
+        fight: data.fight,
+        playerTier: data.playerTier ?? this.playerTier,
+        brigandName: bType.name,
+      });
+    } catch {
+      // API failed — just remove the brigand silently
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  ZONE ENTRY DETECTION (FIX 6 — slide-in location banner)
   // ═══════════════════════════════════════════════════════════
   private checkZoneEntry() {
@@ -1711,5 +1891,8 @@ export class WorldScene extends Phaser.Scene {
     this.xpNuggets.forEach(n => { n.orb.destroy(); n.glow.destroy(); });
     this.xpNuggets = [];
     this.xpNuggetRespawnTimer?.remove();
+    this.brigands.forEach(b => { b.sprite.destroy(); b.excl.destroy(); b.glow.destroy(); });
+    this.brigands = [];
+    this.brigandRespawnTimer?.remove();
   }
 }

@@ -65,6 +65,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [cardPlayer, setCardPlayer] = useState<CardData | null>(null);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  const [brigandData, setBrigandData] = useState<any>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [showPWABanner, setShowPWABanner] = useState(false);
   const isMobile = useIsMobile();
@@ -154,8 +155,9 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
       game.events.on('show_player_card', handleShowCard);
       game.events.on('npc_quests', () => setActivePanel('quests'));
       game.events.on('npc_inventory', () => setActivePanel('inventory'));
-      game.events.on('npc_arena', () => setActivePanel('arena'));
+      game.events.on('npc_arena', () => { setBrigandData(null); setActivePanel('arena'); });
       game.events.on('npc_marketplace', () => setActivePanel('marketplace'));
+      game.events.on('brigand_encounter', (data: any) => { setBrigandData(data); setActivePanel('arena'); });
       // map_transition now handled in-game via typewriter dialogue (WorldScene)
 
       gameRef.current = game;
@@ -169,7 +171,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
     };
   }, []);
 
-  const closePanel = () => setActivePanel(null);
+  const closePanel = () => { setActivePanel(null); setBrigandData(null); };
 
   // ── Mobile layout: 66% game + 34% control panel ──
   if (isMobile) {
@@ -208,7 +210,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
         )}
         {activePanel === 'quests' && <QuestPanel onClose={closePanel} />}
         {activePanel === 'inventory' && <InventoryPanel onClose={closePanel} />}
-        {activePanel === 'arena' && <ArenaPanel onClose={closePanel} />}
+        {activePanel === 'arena' && <ArenaPanel onClose={closePanel} brigandData={brigandData} />}
         {activePanel === 'marketplace' && <MarketplacePanel onClose={closePanel} />}
         {toast && (
           <div

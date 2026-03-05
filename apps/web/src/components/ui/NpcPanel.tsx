@@ -649,10 +649,11 @@ function ResultScreen({ result, onDone }: { result: GhostFightResult; onDone: ()
 }
 
 // ─── Arena Panel ───
-export function ArenaPanel({ onClose }: { onClose: () => void }) {
+export function ArenaPanel({ onClose, brigandData }: { onClose: () => void; brigandData?: any }) {
   const [fighting, setFighting] = useState(false);
   const [result, setResult] = useState<GhostFightResult | null>(null);
   const [playerTier, setPlayerTier] = useState('villager');
+  const isBrigand = !!brigandData;
 
   const fightGhost = useCallback(async () => {
     setFighting(true);
@@ -669,20 +670,39 @@ export function ArenaPanel({ onClose }: { onClose: () => void }) {
     setFighting(false);
   }, []);
 
+  // Auto-start brigand fight
+  useEffect(() => {
+    if (brigandData?.fight) {
+      setResult(brigandData.fight);
+      if (brigandData.playerTier) setPlayerTier(brigandData.playerTier);
+    }
+  }, [brigandData]);
+
+  const panelTitle = isBrigand
+    ? `⚔ ${brigandData?.brigandName ?? 'Brigand'} — Encounter!`
+    : '⚔ Valkyra — Arena';
+
   return (
-    <Panel title="⚔ Valkyra — Arena" onClose={onClose}>
+    <Panel title={panelTitle} onClose={onClose}>
       {/* Active fight scene */}
       {result && !fighting && (
         <ArenaFightScene
           result={result}
           playerName="You"
           playerTier={playerTier}
-          onDone={() => { setResult(null); fightGhost(); }}
+          onDone={() => {
+            if (isBrigand) {
+              onClose();
+            } else {
+              setResult(null);
+              fightGhost();
+            }
+          }}
         />
       )}
 
-      {/* Pre-fight screen */}
-      {!result && (
+      {/* Pre-fight screen (only for arena, not brigands) */}
+      {!result && !isBrigand && (
         <div style={{ background: '#0a0818', border: '1px solid #F39C1230', borderRadius: 8, padding: 16, marginBottom: 12 }}>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: '#E74C3C', marginBottom: 8 }}>⚔ SOLO ARENA</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: '#ffffff50', lineHeight: 1.8, marginBottom: 16 }}>
@@ -709,8 +729,8 @@ export function ArenaPanel({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* PvP teaser */}
-      {!result && (
+      {/* PvP teaser (only for arena) */}
+      {!result && !isBrigand && (
         <div style={{ background: '#0a0818', border: '1px solid #7B68EE30', borderRadius: 8, padding: 12 }}>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: '#7B68EE', marginBottom: 8 }}>{'👥'} PVP {'—'} COMING SOON</div>
           {['1. Find another player in the world', '2. Walk up and press E to challenge', '3. Winner takes 10% of loser\'s XP'].map((line, i) => (
