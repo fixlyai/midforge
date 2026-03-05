@@ -50,7 +50,15 @@ async function claimDailyLogin(game: any) {
     if (!res.ok) return;
     const data = await res.json();
     if (data.alreadyClaimed || !data.reward) return;
-    // Show reward via zone banner
+    // First-login welcome bonus
+    if (data.firstLogin && data.firstLoginBonus) {
+      game.events.emit(
+        'zone_enter_banner',
+        `WELCOME TO MIDFORGE — +${data.firstLoginBonus} XP Bonus!`
+      );
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    // Show daily reward via zone banner
     game.events.emit(
       'zone_enter_banner',
       `DAY ${data.streak} — +${data.reward.xp} XP  +${data.reward.gold}G`

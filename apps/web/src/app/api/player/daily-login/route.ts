@@ -26,6 +26,14 @@ export async function POST() {
     });
   }
 
+  // First-login bonus: 100 XP if player has never logged in before
+  const isFirstLogin = !lastLogin && currentStreak === 0;
+  let firstLoginBonus = 0;
+  if (isFirstLogin) {
+    firstLoginBonus = 100;
+    await awardXP(player.id, 100, 'first_login');
+  }
+
   // Calculate streak
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
   const isConsecutive = lastLogin === yesterday;
@@ -57,6 +65,8 @@ export async function POST() {
   return NextResponse.json({
     alreadyClaimed: false,
     streak: newStreak,
+    firstLogin: isFirstLogin,
+    firstLoginBonus,
     reward: {
       xp: reward.xp,
       gold: reward.gold,

@@ -154,6 +154,10 @@ export class WorldScene extends Phaser.Scene {
   private brigandRespawnTimer: Phaser.Time.TimerEvent | null = null;
   private brigandEncounterCooldown = 0;
 
+  // Zone first-visit XP
+  private visitedZones = new Set<string>();
+  private readonly ZONE_FIRST_VISIT_XP = 20;
+
   // Cinematic Village Scenes — time-based ambient events
   private earlyRiserAwarded = false;
   private midnightBellPlayed = false;
@@ -2493,7 +2497,34 @@ export class WorldScene extends Phaser.Scene {
     const label = displayNames[zoneName];
     if (!label) return;
 
-    this.game.events.emit('zone_enter_banner', label);
+    // Zone first-visit XP bonus
+    if (!this.visitedZones.has(zoneName)) {
+      this.visitedZones.add(zoneName);
+      this.game.events.emit('zone_enter_banner', `${label} — +${this.ZONE_FIRST_VISIT_XP} XP Discovery`);
+
+      if (this.player) {
+        const txt = this.add.text(
+          this.player.x, this.player.y - 20,
+          `+${this.ZONE_FIRST_VISIT_XP} XP — New Area!`,
+          { fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#27AE60', stroke: '#000000', strokeThickness: 3, resolution: 4 }
+        ).setOrigin(0.5).setDepth(202);
+        this.tweens.add({
+          targets: txt, y: txt.y - 40, alpha: 0,
+          duration: 2500, ease: 'Power2',
+          onComplete: () => txt.destroy(),
+        });
+      }
+
+      fetch('/api/player/award-xp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: this.ZONE_FIRST_VISIT_XP, source: 'zone_discovery' }),
+      }).then(r => r.json()).then(d => {
+        if (d.newXP !== undefined) this.game.events.emit('xp_updated', d.newXP);
+      }).catch(() => {});
+    } else {
+      this.game.events.emit('zone_enter_banner', label);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
