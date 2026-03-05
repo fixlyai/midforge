@@ -118,6 +118,19 @@ export class WorldScene extends Phaser.Scene {
   // Quest system
   public questManager!: QuestManager;
 
+  // XP Nuggets — glowing amber orbs on the map
+  private xpNuggets: {
+    orb: Phaser.GameObjects.Arc;
+    glow: Phaser.GameObjects.Arc;
+    x: number; y: number;
+    collected: boolean;
+  }[] = [];
+  private readonly XP_NUGGET_COUNT = 8;
+  private readonly XP_NUGGET_REWARD = 15;
+  private readonly XP_NUGGET_RESPAWN_MS = 10 * 60 * 1000; // 10 minutes
+  private readonly XP_NUGGET_PICKUP_DIST = 20;
+  private xpNuggetRespawnTimer: Phaser.Time.TimerEvent | null = null;
+
   // Ambient dialogue cooldowns (NPC name → last trigger time)
   private ambientCooldowns = new Map<string, number>();
   private readonly AMBIENT_COOLDOWN_MS = 30_000; // 30 seconds per NPC
@@ -260,6 +273,9 @@ export class WorldScene extends Phaser.Scene {
         onComplete: () => txt.destroy(),
       });
     });
+
+    // ── XP Nuggets — glowing discovery orbs ──
+    this.spawnXpNuggets();
 
     this.connectMultiplayer(playerData);
     this.game.events.emit('world_ready');
@@ -1309,6 +1325,7 @@ export class WorldScene extends Phaser.Scene {
     this.checkNpcProximity();
     this.checkMapTransitions();
     this.checkZoneEntry();
+    this.checkXpNuggetPickup();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1436,6 +1453,161 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  XP NUGGETS — glowing amber discovery orbs
+  // ═══════════════════════════════════════════════════════════
+  private spawnXpNuggets() {
+    // Clear any existing nuggets
+    for (const n of this.xpNuggets) {
+      n.orb.destroy();
+      n.glow.destroy();
+    }
+    this.xpNuggets = [];
+
+    // Walkable area bounds (avoid edges and collision-heavy areas)
+    const margin = 80;
+    const mapW = this.mapCols * TILE_SIZE;
+    const mapH = this.mapRows * TILE_SIZE;
+
+    for (let i = 0; i < this.XP_NUGGET_COUNT; i++) {
+      const x = margin + Math.random() * (mapW - margin * 2);
+      const y = margin + Math.random() * (mapH - margin * 2);
+
+      // Outer glow (larger, faint, pulsing)
+      const glow = this.add.circle(x, y, 10, 0xF39C12, 0.15).setDepth(3);
+      this.tweens.add({
+        targets: glow,
+        scaleX: 1.8, scaleY: 1.8, alpha: 0.05,
+        duration: 1200 + Math.random() * 400,
+        yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+
+      // Inner orb (bright amber core)
+      const orb = this.add.circle(x, y, 4, 0xF39C12, 0.9).setDepth(4);
+      this.tweens.add({
+        targets: orb,
+        scaleX: 1.2, scaleY: 1.2, alpha: 0.6,
+        duration: 800 + Math.random() * 300,
+        yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+        delay: Math.random() * 500,
+      });
+
+      this.xpNuggets.push({ orb, glow, x, y, collected: false });
+    }
+
+    // Schedule respawn
+    this.xpNuggetRespawnTimer = this.time.addEvent({
+      delay: this.XP_NUGGET_RESPAWN_MS,
+      loop: true,
+      callback: () => this.respawnXpNuggets(),
+    });
+  }
+
+  private respawnXpNuggets() {
+    const mapW = this.mapCols * TILE_SIZE;
+    const mapH = this.mapRows * TILE_SIZE;
+    const margin = 80;
+
+    for (const nugget of this.xpNuggets) {
+      if (!nugget.collected) continue;
+      // Relocate to new random position
+      const x = margin + Math.random() * (mapW - margin * 2);
+      const y = margin + Math.random() * (mapH - margin * 2);
+      nugget.x = x;
+      nugget.y = y;
+      nugget.collected = false;
+
+      nugget.glow.setPosition(x, y).setVisible(true).setAlpha(0.15);
+      nugget.orb.setPosition(x, y).setVisible(true).setAlpha(0.9);
+
+      // Restart pulse tweens
+      this.tweens.add({
+        targets: nugget.glow,
+        scaleX: 1.8, scaleY: 1.8, alpha: 0.05,
+        duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+      this.tweens.add({
+        targets: nugget.orb,
+        scaleX: 1.2, scaleY: 1.2, alpha: 0.6,
+        duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+    }
+  }
+
+  private checkXpNuggetPickup() {
+    if (!this.player) return;
+    const px = this.player.x;
+    const py = this.player.y;
+
+    for (const nugget of this.xpNuggets) {
+      if (nugget.collected) continue;
+      const dx = px - nugget.x;
+      const dy = py - nugget.y;
+      if (dx * dx + dy * dy < this.XP_NUGGET_PICKUP_DIST * this.XP_NUGGET_PICKUP_DIST) {
+        this.collectXpNugget(nugget);
+      }
+    }
+  }
+
+  private collectXpNugget(nugget: typeof this.xpNuggets[number]) {
+    nugget.collected = true;
+
+    // Kill pulse tweens and hide
+    this.tweens.killTweensOf(nugget.orb);
+    this.tweens.killTweensOf(nugget.glow);
+
+    // Burst animation: orb scales up and fades
+    this.tweens.add({
+      targets: nugget.orb,
+      scaleX: 3, scaleY: 3, alpha: 0,
+      duration: 400, ease: 'Power2',
+      onComplete: () => nugget.orb.setVisible(false),
+    });
+    this.tweens.add({
+      targets: nugget.glow,
+      scaleX: 4, scaleY: 4, alpha: 0,
+      duration: 400, ease: 'Power2',
+      onComplete: () => nugget.glow.setVisible(false),
+    });
+
+    // Floating "+15 XP" text
+    const txt = this.add.text(
+      nugget.x, nugget.y - 8,
+      `+${this.XP_NUGGET_REWARD} XP`,
+      {
+        fontFamily: '"Press Start 2P"', fontSize: '8px',
+        color: '#F39C12', stroke: '#000000', strokeThickness: 3, resolution: 4,
+      }
+    ).setOrigin(0.5).setDepth(200);
+
+    this.tweens.add({
+      targets: txt,
+      y: txt.y - 40, alpha: 0,
+      duration: 2000, ease: 'Power2',
+      onComplete: () => txt.destroy(),
+    });
+
+    // Amber flash
+    this.flashScreen(0xF39C12, 150);
+
+    // Play chime if available
+    if (this.cache.audio.exists('sfx_interact')) {
+      this.sound.play('sfx_interact', { volume: 0.25 });
+    }
+
+    // Award XP via API (fire and forget)
+    fetch('/api/player/award-xp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: this.XP_NUGGET_REWARD, source: 'xp_nugget' }),
+    }).then(res => res.json()).then(data => {
+      // Update UIScene XP bar if it exists
+      if (data.newXP !== undefined) {
+        this.game.events.emit('xp_updated', data.newXP);
+      }
+    }).catch(() => {});
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  ZONE ENTRY DETECTION (FIX 6 — slide-in location banner)
   // ═══════════════════════════════════════════════════════════
   private checkZoneEntry() {
@@ -1536,5 +1708,8 @@ export class WorldScene extends Phaser.Scene {
     this.campfireGlows.forEach(g => g.destroy());
     this.waterTileSprites.forEach(e => e.sprite.destroy());
     this.wanderingNpcs.forEach(w => w.timer?.remove());
+    this.xpNuggets.forEach(n => { n.orb.destroy(); n.glow.destroy(); });
+    this.xpNuggets = [];
+    this.xpNuggetRespawnTimer?.remove();
   }
 }
