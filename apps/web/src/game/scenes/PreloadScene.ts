@@ -63,13 +63,13 @@ export class PreloadScene extends Phaser.Scene {
     for (const tier of CHARACTER_TIERS) {
       for (const form of CHARACTER_FORMS) {
         const key = `${tier}_${form}`;
-        this.load.spritesheet(key, `/sprites/characters/${key}.png`, {
+        this.load.spritesheet(key, `/sprites/characters/${key}.png?v=4`, {
           frameWidth, frameHeight,
         });
       }
     }
     for (const npcKey of CHARACTER_NPC_KEYS) {
-      this.load.spritesheet(npcKey, `/sprites/characters/${npcKey}.png`, {
+      this.load.spritesheet(npcKey, `/sprites/characters/${npcKey}.png?v=4`, {
         frameWidth, frameHeight,
       });
     }

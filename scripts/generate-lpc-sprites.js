@@ -224,7 +224,10 @@ function downloadFile(url) {
 async function generateSheet(name, layerPaths) {
   const canvas = createCanvas(SHEET_W, SHEET_H);
   const ctx = canvas.getContext('2d');
+
+  // CRITICAL: ensure fully transparent canvas before compositing layers
   ctx.clearRect(0, 0, SHEET_W, SHEET_H);
+  ctx.globalCompositeOperation = 'source-over';
 
   let loadedCount = 0;
   for (const layerPath of layerPaths) {
@@ -247,7 +250,11 @@ async function generateSheet(name, layerPaths) {
   }
 
   const outPath = path.join(OUTPUT_DIR, `${name}.png`);
-  const buffer = canvas.toBuffer('image/png');
+  // Force RGBA PNG output (no palette/indexed mode)
+  const buffer = canvas.toBuffer('image/png', {
+    compressionLevel: 6,
+    filters: canvas.PNG_FILTER_NONE,
+  });
   fs.writeFileSync(outPath, buffer);
   console.log(`  ✓ ${name}.png (${loadedCount} layers, ${buffer.length} bytes)`);
   return true;

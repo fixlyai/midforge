@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { QuestPanel, InventoryPanel, ArenaPanel, MarketplacePanel } from '@/components/ui/NpcPanel';
+import { MobileControlPanel } from './MobileControlPanel';
 
 interface PlayerData {
   id: string;
@@ -32,13 +33,24 @@ interface ToastData {
   key: number;
 }
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    setMobile(
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      navigator.maxTouchPoints > 1
+    );
+  }, []);
+  return mobile;
+}
+
 export function GameCanvas({ playerData }: { playerData: PlayerData }) {
   const gameRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [cardPlayer, setCardPlayer] = useState<CardData | null>(null);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
-  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isMobile = useIsMobile();
 
   const handleShowCard = useCallback((data: CardData) => {
     setCardPlayer(data);
@@ -62,10 +74,14 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
         ('ontouchstart' in window)
       );
 
+      // Mobile: game canvas gets top 66% of screen. Desktop: fixed 960×640.
+      const gameWidth  = mobile ? window.innerWidth : 960;
+      const gameHeight = mobile ? Math.floor(window.innerHeight * 0.66) : 640;
+
       const game = new Phaser.Game({
         type: Phaser.AUTO,
-        width: mobile ? window.innerWidth : 960,
-        height: mobile ? window.innerHeight : 640,
+        width: gameWidth,
+        height: gameHeight,
         parent: containerRef.current!,
         pixelArt: true,
         antialias: false,
@@ -129,11 +145,63 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
 
   const closePanel = () => setActivePanel(null);
 
+  // ── Mobile layout: 66% game + 34% control panel ──
+  if (isMobile) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100dvw',
+        height: '100dvh',
+        background: '#0d0a1e',
+        overflow: 'hidden',
+        touchAction: 'none',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+      }}>
+        {/* TOP: Game canvas — 66% of screen */}
+        <div
+          ref={containerRef}
+          style={{
+            width: '100%',
+            height: '66dvh',
+            flexShrink: 0,
+            overflow: 'hidden',
+            position: 'relative',
+            imageRendering: 'pixelated',
+          }}
+        />
+
+        {/* BOTTOM: Control panel — 34% of screen */}
+        <MobileControlPanel />
+
+        {/* Overlays render on top of everything */}
+        {cardPlayer && (
+          <PlayerCard player={cardPlayer} onClose={() => setCardPlayer(null)} />
+        )}
+        {activePanel === 'quests' && <QuestPanel onClose={closePanel} />}
+        {activePanel === 'inventory' && <InventoryPanel onClose={closePanel} />}
+        {activePanel === 'arena' && <ArenaPanel onClose={closePanel} />}
+        {activePanel === 'marketplace' && <MarketplacePanel onClose={closePanel} />}
+        {toast && (
+          <div
+            key={toast.key}
+            className="absolute top-4 left-1/2 -translate-x-1/2 bg-forge-dark/90 border border-forge-amber/40 px-4 py-2 rounded font-pixel text-[8px] text-forge-amber animate-pulse z-50"
+          >
+            {toast.message}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Desktop layout: unchanged ──
   return (
-    <div className={`relative ${isMobile ? 'game-fullscreen' : 'w-full max-w-[960px]'}`}>
+    <div className="relative w-full max-w-[960px]">
       <div
         ref={containerRef}
-        className={`overflow-hidden ${isMobile ? 'w-full h-full' : 'w-full aspect-[3/2] rounded-lg border-2 border-forge-amber/40'}`}
+        className="overflow-hidden w-full aspect-[3/2] rounded-lg border-2 border-forge-amber/40"
         style={{ imageRendering: 'pixelated', touchAction: 'none' }}
       />
       {cardPlayer && (

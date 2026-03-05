@@ -104,15 +104,12 @@ export class WorldScene extends Phaser.Scene {
   // Map transition zones
   private transitionZones: { zone: Phaser.GameObjects.Zone; targetMap: string }[] = [];
 
-  // Mobile touch controls
+  // Mobile touch controls (driven by React MobileControlPanel via CustomEvents)
   private isMobile = false;
-  private joystick: any = null;
-  private joyKeys: any = null;
-  private mobileButtons: Phaser.GameObjects.GameObject[] = [];
-  private touchLeft = false;
-  private touchRight = false;
-  private touchUp = false;
-  private touchDown = false;
+  private mobileState = { left: false, right: false, up: false, down: false };
+  private mobileJoystickHandler: ((e: Event) => void) | null = null;
+  private mobileInteractHandler: (() => void) | null = null;
+  private mobileInventoryHandler: (() => void) | null = null;
 
   // Spawn points from map
   private spawnDefault = { x: 624, y: 736 };
@@ -190,11 +187,11 @@ export class WorldScene extends Phaser.Scene {
     this.wasd = this.input.keyboard!.addKeys('W,S,A,D') as Record<string, Phaser.Input.Keyboard.Key>;
     this.interactKey = this.input.keyboard!.addKey('E');
 
-    // ── Mobile controls ───────────────────────────────────
+    // ── Mobile controls (React-driven via CustomEvents) ───
     this.isMobile = this.registry.get('isMobile') === true;
     if (this.isMobile) {
-      this.cameras.main.setZoom(1.5); // 1.5× on mobile — less dense than 2×
-      this.createMobileControls();
+      this.cameras.main.setZoom(1.5);
+      this.setupMobileEventListeners();
     }
 
     // ── Player Name Label ───────────────────────────────
@@ -1067,10 +1064,10 @@ export class WorldScene extends Phaser.Scene {
     let moving = false;
     let direction = this.lastDirection;
 
-    const left  = this.cursors.left?.isDown  || this.wasd?.A?.isDown  || this.joyKeys?.left?.isDown  || this.touchLeft  || false;
-    const right = this.cursors.right?.isDown || this.wasd?.D?.isDown || this.joyKeys?.right?.isDown || this.touchRight || false;
-    const up    = this.cursors.up?.isDown    || this.wasd?.W?.isDown    || this.joyKeys?.up?.isDown    || this.touchUp    || false;
-    const down  = this.cursors.down?.isDown  || this.wasd?.S?.isDown  || this.joyKeys?.down?.isDown  || this.touchDown  || false;
+    const left  = this.cursors.left?.isDown  || this.wasd?.A?.isDown  || this.mobileState.left  || false;
+    const right = this.cursors.right?.isDown || this.wasd?.D?.isDown || this.mobileState.right || false;
+    const up    = this.cursors.up?.isDown    || this.wasd?.W?.isDown    || this.mobileState.up    || false;
+    const down  = this.cursors.down?.isDown  || this.wasd?.S?.isDown  || this.mobileState.down  || false;
 
     if (left) { vx = -PLAYER_SPEED; direction = 'left'; moving = true; }
     if (right) { vx = PLAYER_SPEED; direction = 'right'; moving = true; }
@@ -1160,124 +1157,25 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  MOBILE CONTROLS — native Phaser joystick + action buttons
+  //  MOBILE CONTROLS — React CustomEvent listeners
   // ═══════════════════════════════════════════════════════════
-  private joyBase!: Phaser.GameObjects.Arc;
-  private joyThumb!: Phaser.GameObjects.Arc;
-  private joyOriginX = 0;
-  private joyOriginY = 0;
-  private joyTouching = false;
-  private joyPointerId = -1;
+  private setupMobileEventListeners() {
+    this.mobileJoystickHandler = (e: Event) => {
+      const { left, right, up, down } = (e as CustomEvent).detail;
+      this.mobileState = { left, right, up, down };
+    };
 
-  private createMobileControls() {
-    const w = this.scale.width;
-    const h = this.scale.height;
-    // Read CSS safe-area-inset-bottom (iPhone home bar ~34px)
-    const sabStr = typeof document !== 'undefined'
-      ? getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-bottom)') || '0'
-      : '0';
-    const safeBottom = Math.max(parseInt(sabStr, 10) || 0, 34);
+    this.mobileInteractHandler = () => {
+      this.handleMobileInteract();
+    };
 
-    const joyRadius = 55;
-    const joyX = 90;
-    const joyY = h - 90 - safeBottom;
-
-    // ── Visual joystick (left side) ──
-    this.joyBase = this.add.circle(joyX, joyY, joyRadius, 0x000000, 0.45)
-      .setScrollFactor(0).setDepth(1000).setStrokeStyle(2, 0xF39C12, 0.4);
-    this.joyThumb = this.add.circle(joyX, joyY, 28, 0xF39C12, 0.85)
-      .setScrollFactor(0).setDepth(1001);
-    this.joyOriginX = joyX;
-    this.joyOriginY = joyY;
-    this.mobileButtons.push(this.joyBase, this.joyThumb);
-
-    // ── Touch handling — left half of screen drives joystick ──
-    const threshold = 15;
-
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.x < w * 0.5 && !this.joyTouching) {
-        this.joyTouching = true;
-        this.joyPointerId = p.id;
-        this.joyOriginX = p.x;
-        this.joyOriginY = p.y;
-        this.joyBase.setPosition(p.x, p.y);
-        this.joyThumb.setPosition(p.x, p.y);
-      }
-    });
-
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!this.joyTouching || p.id !== this.joyPointerId || !p.isDown) return;
-      const dx = p.x - this.joyOriginX;
-      const dy = p.y - this.joyOriginY;
-      const dist = Math.min(Math.hypot(dx, dy), joyRadius);
-      const angle = Math.atan2(dy, dx);
-      this.joyThumb.setPosition(
-        this.joyOriginX + Math.cos(angle) * dist,
-        this.joyOriginY + Math.sin(angle) * dist,
-      );
-      this.touchLeft  = dx < -threshold;
-      this.touchRight = dx > threshold;
-      this.touchUp    = dy < -threshold;
-      this.touchDown  = dy > threshold;
-    });
-
-    this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
-      if (p.id === this.joyPointerId) {
-        this.joyTouching = false;
-        this.joyPointerId = -1;
-        this.touchLeft = this.touchRight = this.touchUp = this.touchDown = false;
-        // Snap back to default position
-        const defX = 90;
-        const defY = this.scale.height - 90 - safeBottom;
-        this.joyBase.setPosition(defX, defY);
-        this.joyThumb.setPosition(defX, defY);
-        this.joyOriginX = defX;
-        this.joyOriginY = defY;
-      }
-    });
-
-    // ── Interact button [E] (right side) ──
-    const eBtnX = w - 70;
-    const eBtnY = h - 140 - safeBottom;
-    const eBtn = this.add.circle(eBtnX, eBtnY, 32, 0xF39C12, 0.8)
-      .setScrollFactor(0).setDepth(1000).setInteractive()
-      .setStrokeStyle(2, 0x000000, 0.5);
-    const eLbl = this.add.text(eBtnX, eBtnY, 'E', {
-      fontFamily: '"Press Start 2P"', fontSize: '14px', color: '#000000',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
-    eBtn.on('pointerdown', () => this.handleMobileInteract());
-    this.mobileButtons.push(eBtn, eLbl);
-
-    // ── Inventory button [I] ──
-    const iBtnX = w - 70;
-    const iBtnY = h - 65 - safeBottom;
-    const iBtn = this.add.circle(iBtnX, iBtnY, 32, 0x7B68EE, 0.8)
-      .setScrollFactor(0).setDepth(1000).setInteractive()
-      .setStrokeStyle(2, 0x000000, 0.5);
-    const iLbl = this.add.text(iBtnX, iBtnY, 'I', {
-      fontFamily: '"Press Start 2P"', fontSize: '14px', color: '#ffffff',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
-    iBtn.on('pointerdown', () => {
+    this.mobileInventoryHandler = () => {
       this.game.events.emit('npc_inventory');
-    });
-    this.mobileButtons.push(iBtn, iLbl);
+    };
 
-    // ── Reposition on resize ──
-    this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-      const nw = gameSize.width;
-      const nh = gameSize.height;
-      const newSafe = safeBottom;
-      eBtn.setPosition(nw - 70, nh - 140 - newSafe);
-      eLbl.setPosition(nw - 70, nh - 140 - newSafe);
-      iBtn.setPosition(nw - 70, nh - 65 - newSafe);
-      iLbl.setPosition(nw - 70, nh - 65 - newSafe);
-      if (!this.joyTouching) {
-        const defX = 90;
-        const defY = nh - 90 - newSafe;
-        this.joyBase.setPosition(defX, defY);
-        this.joyThumb.setPosition(defX, defY);
-      }
-    });
+    window.addEventListener('mobile-joystick', this.mobileJoystickHandler);
+    window.addEventListener('mobile-interact', this.mobileInteractHandler);
+    window.addEventListener('mobile-inventory', this.mobileInventoryHandler);
   }
 
   private handleMobileInteract() {
@@ -1294,6 +1192,20 @@ export class WorldScene extends Phaser.Scene {
   //  CLEANUP
   // ═══════════════════════════════════════════════════════════
   shutdown() {
+    // Remove mobile event listeners
+    if (this.mobileJoystickHandler) {
+      window.removeEventListener('mobile-joystick', this.mobileJoystickHandler);
+      this.mobileJoystickHandler = null;
+    }
+    if (this.mobileInteractHandler) {
+      window.removeEventListener('mobile-interact', this.mobileInteractHandler);
+      this.mobileInteractHandler = null;
+    }
+    if (this.mobileInventoryHandler) {
+      window.removeEventListener('mobile-inventory', this.mobileInventoryHandler);
+      this.mobileInventoryHandler = null;
+    }
+
     if (this.colyseusRoom) {
       this.colyseusRoom.leave();
       this.colyseusRoom = null;
@@ -1309,9 +1221,5 @@ export class WorldScene extends Phaser.Scene {
     this.campfireGlows.forEach(g => g.destroy());
     this.waterTileSprites.forEach(e => e.sprite.destroy());
     this.wanderingNpcs.forEach(w => w.timer?.remove());
-    this.mobileButtons.forEach(b => b.destroy());
-    this.mobileButtons = [];
-    this.joystick = null;
-    this.joyKeys = null;
   }
 }
