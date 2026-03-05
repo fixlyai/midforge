@@ -193,7 +193,7 @@ export class WorldScene extends Phaser.Scene {
     // ── Mobile controls ───────────────────────────────────
     this.isMobile = this.registry.get('isMobile') === true;
     if (this.isMobile) {
-      this.cameras.main.setZoom(Math.min(cameraZoom, 2.5));
+      this.cameras.main.setZoom(1.5); // 1.5× on mobile — less dense than 2×
       this.createMobileControls();
     }
 
@@ -467,8 +467,7 @@ export class WorldScene extends Phaser.Scene {
       if (!isLocked) {
         this.npcSprites.set(obj.name, sprite);
 
-        const roleLabel = npcType === 'ambient' ? '' : `\n${npcType.replace('_', ' ')}`;
-        const label = this.add.text(px, py - 14, `${obj.name}${roleLabel}`, {
+        const label = this.add.text(px, py - 14, obj.name, {
           ...TEXT_STYLES.npcName,
           color: '#F39C12',
         }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
@@ -1161,58 +1160,103 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  MOBILE CONTROLS — virtual joystick + action buttons
+  //  MOBILE CONTROLS — native Phaser joystick + action buttons
   // ═══════════════════════════════════════════════════════════
+  private joyBase!: Phaser.GameObjects.Arc;
+  private joyThumb!: Phaser.GameObjects.Arc;
+  private joyOriginX = 0;
+  private joyOriginY = 0;
+  private joyTouching = false;
+  private joyPointerId = -1;
+
   private createMobileControls() {
     const w = this.scale.width;
     const h = this.scale.height;
-    const safeBottom = 20; // baseline safe area padding
+    // Read CSS safe-area-inset-bottom (iPhone home bar ~34px)
+    const sabStr = typeof document !== 'undefined'
+      ? getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-bottom)') || '0'
+      : '0';
+    const safeBottom = Math.max(parseInt(sabStr, 10) || 0, 34);
 
-    // ── Virtual Joystick (left side) ──
-    try {
-      const rexPlugin = (this as any).plugins?.get?.('rexVirtualJoystick');
-      if (rexPlugin) {
-        const base = this.add.circle(0, 0, 50, 0x000000, 0.4)
-          .setScrollFactor(0).setDepth(200);
-        const thumb = this.add.circle(0, 0, 25, 0xF39C12, 0.7)
-          .setScrollFactor(0).setDepth(201);
+    const joyRadius = 55;
+    const joyX = 90;
+    const joyY = h - 90 - safeBottom;
 
-        this.joystick = rexPlugin.add(this, {
-          x: 80,
-          y: h - 80 - safeBottom,
-          radius: 50,
-          base,
-          thumb,
-          fixed: true,
-        });
-        this.joystick.setDepth(200);
-        this.joyKeys = this.joystick.createCursorKeys();
-        this.mobileButtons.push(base, thumb);
+    // ── Visual joystick (left side) ──
+    this.joyBase = this.add.circle(joyX, joyY, joyRadius, 0x000000, 0.45)
+      .setScrollFactor(0).setDepth(1000).setStrokeStyle(2, 0xF39C12, 0.4);
+    this.joyThumb = this.add.circle(joyX, joyY, 28, 0xF39C12, 0.85)
+      .setScrollFactor(0).setDepth(1001);
+    this.joyOriginX = joyX;
+    this.joyOriginY = joyY;
+    this.mobileButtons.push(this.joyBase, this.joyThumb);
+
+    // ── Touch handling — left half of screen drives joystick ──
+    const threshold = 15;
+
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (p.x < w * 0.5 && !this.joyTouching) {
+        this.joyTouching = true;
+        this.joyPointerId = p.id;
+        this.joyOriginX = p.x;
+        this.joyOriginY = p.y;
+        this.joyBase.setPosition(p.x, p.y);
+        this.joyThumb.setPosition(p.x, p.y);
       }
-    } catch (e) {
-      console.warn('Rex joystick plugin not available, using fallback touch');
-      this.createFallbackTouch();
-    }
+    });
+
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (!this.joyTouching || p.id !== this.joyPointerId || !p.isDown) return;
+      const dx = p.x - this.joyOriginX;
+      const dy = p.y - this.joyOriginY;
+      const dist = Math.min(Math.hypot(dx, dy), joyRadius);
+      const angle = Math.atan2(dy, dx);
+      this.joyThumb.setPosition(
+        this.joyOriginX + Math.cos(angle) * dist,
+        this.joyOriginY + Math.sin(angle) * dist,
+      );
+      this.touchLeft  = dx < -threshold;
+      this.touchRight = dx > threshold;
+      this.touchUp    = dy < -threshold;
+      this.touchDown  = dy > threshold;
+    });
+
+    this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      if (p.id === this.joyPointerId) {
+        this.joyTouching = false;
+        this.joyPointerId = -1;
+        this.touchLeft = this.touchRight = this.touchUp = this.touchDown = false;
+        // Snap back to default position
+        const defX = 90;
+        const defY = this.scale.height - 90 - safeBottom;
+        this.joyBase.setPosition(defX, defY);
+        this.joyThumb.setPosition(defX, defY);
+        this.joyOriginX = defX;
+        this.joyOriginY = defY;
+      }
+    });
 
     // ── Interact button [E] (right side) ──
     const eBtnX = w - 70;
-    const eBtnY = h - 130 - safeBottom;
-    const eBtn = this.add.circle(eBtnX, eBtnY, 28, 0xF39C12, 0.75)
-      .setScrollFactor(0).setDepth(200).setInteractive();
+    const eBtnY = h - 140 - safeBottom;
+    const eBtn = this.add.circle(eBtnX, eBtnY, 32, 0xF39C12, 0.8)
+      .setScrollFactor(0).setDepth(1000).setInteractive()
+      .setStrokeStyle(2, 0x000000, 0.5);
     const eLbl = this.add.text(eBtnX, eBtnY, 'E', {
-      fontFamily: '"Press Start 2P"', fontSize: '11px', color: '#0d0a1e',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+      fontFamily: '"Press Start 2P"', fontSize: '14px', color: '#000000',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
     eBtn.on('pointerdown', () => this.handleMobileInteract());
     this.mobileButtons.push(eBtn, eLbl);
 
     // ── Inventory button [I] ──
     const iBtnX = w - 70;
     const iBtnY = h - 65 - safeBottom;
-    const iBtn = this.add.circle(iBtnX, iBtnY, 28, 0x7B68EE, 0.75)
-      .setScrollFactor(0).setDepth(200).setInteractive();
+    const iBtn = this.add.circle(iBtnX, iBtnY, 32, 0x7B68EE, 0.8)
+      .setScrollFactor(0).setDepth(1000).setInteractive()
+      .setStrokeStyle(2, 0x000000, 0.5);
     const iLbl = this.add.text(iBtnX, iBtnY, 'I', {
-      fontFamily: '"Press Start 2P"', fontSize: '11px', color: '#ffffff',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+      fontFamily: '"Press Start 2P"', fontSize: '14px', color: '#ffffff',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
     iBtn.on('pointerdown', () => {
       this.game.events.emit('npc_inventory');
     });
@@ -1222,40 +1266,17 @@ export class WorldScene extends Phaser.Scene {
     this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
       const nw = gameSize.width;
       const nh = gameSize.height;
-      eBtn.setPosition(nw - 70, nh - 130 - safeBottom);
-      eLbl.setPosition(nw - 70, nh - 130 - safeBottom);
-      iBtn.setPosition(nw - 70, nh - 65 - safeBottom);
-      iLbl.setPosition(nw - 70, nh - 65 - safeBottom);
-      if (this.joystick) {
-        this.joystick.x = 80;
-        this.joystick.y = nh - 80 - safeBottom;
+      const newSafe = safeBottom;
+      eBtn.setPosition(nw - 70, nh - 140 - newSafe);
+      eLbl.setPosition(nw - 70, nh - 140 - newSafe);
+      iBtn.setPosition(nw - 70, nh - 65 - newSafe);
+      iLbl.setPosition(nw - 70, nh - 65 - newSafe);
+      if (!this.joyTouching) {
+        const defX = 90;
+        const defY = nh - 90 - newSafe;
+        this.joyBase.setPosition(defX, defY);
+        this.joyThumb.setPosition(defX, defY);
       }
-    });
-  }
-
-  private createFallbackTouch() {
-    // 8-direction touch input without rex plugin
-    let touchStartX = 0;
-    let touchStartY = 0;
-    const threshold = 20;
-
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.x < this.scale.width / 2) {
-        touchStartX = p.x;
-        touchStartY = p.y;
-      }
-    });
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!p.isDown || p.x > this.scale.width / 2) return;
-      const dx = p.x - touchStartX;
-      const dy = p.y - touchStartY;
-      this.touchLeft  = dx < -threshold;
-      this.touchRight = dx > threshold;
-      this.touchUp    = dy < -threshold;
-      this.touchDown  = dy > threshold;
-    });
-    this.input.on('pointerup', () => {
-      this.touchLeft = this.touchRight = this.touchUp = this.touchDown = false;
     });
   }
 

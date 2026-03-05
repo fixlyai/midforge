@@ -435,11 +435,12 @@ export const INTRO = {
 // ── Text Styles ─────────────────────────────────────────────
 export const TEXT_STYLES = {
   npcName: {
-    fontSize: '5px',
+    fontSize: '6px',
     fontFamily: '"Press Start 2P", monospace',
     stroke: '#000000',
-    strokeThickness: 2,
+    strokeThickness: 3,
     align: 'center' as const,
+    resolution: 2,
   },
   playerName: {
     fontSize: '5px',

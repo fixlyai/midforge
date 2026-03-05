@@ -56,18 +56,11 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
 
       if (gameRef.current) return;
 
-      const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-      // Dynamic import of rex plugin only on mobile
-      let rexPlugin: any = null;
-      if (mobile) {
-        try {
-          const mod = await import('phaser3-rex-plugins/plugins/virtualjoystick-plugin.js');
-          rexPlugin = mod.default || mod;
-        } catch (e) {
-          console.warn('Failed to load rex joystick plugin:', e);
-        }
-      }
+      const mobile = (
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        (navigator.maxTouchPoints > 1) ||
+        ('ontouchstart' in window)
+      );
 
       const game = new Phaser.Game({
         type: Phaser.AUTO,
@@ -82,9 +75,6 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
           arcade: { gravity: { x: 0, y: 0 }, debug: false },
         },
         scene: [PreloadScene, WorldScene, UIScene],
-        plugins: rexPlugin ? {
-          global: [{ key: 'rexVirtualJoystick', plugin: rexPlugin, start: true }],
-        } : undefined,
         scale: {
           mode: mobile ? Phaser.Scale.RESIZE : Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -140,7 +130,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
   const closePanel = () => setActivePanel(null);
 
   return (
-    <div className={`relative ${isMobile ? 'w-screen h-screen' : 'w-full max-w-[960px]'}`}>
+    <div className={`relative ${isMobile ? 'game-fullscreen' : 'w-full max-w-[960px]'}`}>
       <div
         ref={containerRef}
         className={`overflow-hidden ${isMobile ? 'w-full h-full' : 'w-full aspect-[3/2] rounded-lg border-2 border-forge-amber/40'}`}
