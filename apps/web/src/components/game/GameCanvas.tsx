@@ -50,7 +50,18 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
   const [cardPlayer, setCardPlayer] = useState<CardData | null>(null);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
+  const [showPWABanner, setShowPWABanner] = useState(false);
   const isMobile = useIsMobile();
+
+  // FIX 8: PWA banner for iOS Safari (one-time dismissable)
+  useEffect(() => {
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isStandalone = (window.navigator as any).standalone === true;
+    const dismissed = localStorage.getItem('pwa-banner-dismissed');
+    if (isIOS && !isStandalone && !dismissed) {
+      setShowPWABanner(true);
+    }
+  }, []);
 
   const handleShowCard = useCallback((data: CardData) => {
     setCardPlayer(data);
@@ -190,6 +201,28 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
             className="absolute top-4 left-1/2 -translate-x-1/2 bg-forge-dark/90 border border-forge-amber/40 px-4 py-2 rounded font-pixel text-[8px] text-forge-amber animate-pulse z-50"
           >
             {toast.message}
+          </div>
+        )}
+        {showPWABanner && (
+          <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0,
+            background: '#0d0a1e',
+            borderTop: '2px solid #F39C12',
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            zIndex: 9999,
+            fontFamily: '"Press Start 2P"',
+            fontSize: '7px',
+            color: '#F39C12',
+          }}>
+            <span>Add to Home Screen for best experience</span>
+            <button onClick={() => {
+              localStorage.setItem('pwa-banner-dismissed', '1');
+              setShowPWABanner(false);
+            }} style={{ background: 'none', border: 'none', color: '#F39C12',
+              cursor: 'pointer', fontSize: '12px', padding: '4px 8px' }}>✕</button>
           </div>
         )}
       </div>

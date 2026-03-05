@@ -21,6 +21,13 @@
   }
 }
 
+/* Phaser canvas — crisp pixel art on retina */
+canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -webkit-font-smoothing: none;
+}
+
 /* Game container on mobile */
 .game-fullscreen {
   width: 100dvw;

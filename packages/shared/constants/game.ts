@@ -23,7 +23,7 @@ export const PLAYER_SPEED = 80;
 export const PLAYER_HITBOX = { width: 10, height: 10, offsetX: 3, offsetY: 6 };
 export const PLAYER_DEPTH = 10;
 export const PLAYER_LABEL_DEPTH = 11;
-export const NPC_INTERACT_DISTANCE = 28;
+export const NPC_INTERACT_DISTANCE = 80;
 export const FOOTSTEP_TILE_INTERVAL = 4;
 
 // ── Tilesheets ───────────────────────────────────────────────
@@ -435,42 +435,62 @@ export const INTRO = {
 // ── Text Styles ─────────────────────────────────────────────
 export const TEXT_STYLES = {
   npcName: {
-    fontSize: '6px',
-    fontFamily: '"Press Start 2P", monospace',
-    stroke: '#000000',
-    strokeThickness: 3,
-    align: 'center' as const,
-    resolution: 2,
-  },
-  playerName: {
-    fontSize: '5px',
-    fontFamily: '"Press Start 2P", monospace',
-    stroke: '#000000',
-    strokeThickness: 2,
-  },
-  zoneName: {
-    fontSize: '6px',
-    fontFamily: '"Press Start 2P", monospace',
-    color: '#F39C12',
-    stroke: '#000000',
-    strokeThickness: 2,
-  },
-  dialogue: {
     fontSize: '7px',
     fontFamily: '"Press Start 2P", monospace',
-    color: '#F5DEB3',
+    color: '#F39C12',
     stroke: '#000000',
-    strokeThickness: 1,
-    wordWrap: { width: 400 },
+    strokeThickness: 4,
+    align: 'center' as const,
+    resolution: 4,
+    padding: { x: 2, y: 2 },
   },
-  interactPrompt: {
-    fontSize: '5px',
+  playerName: {
+    fontSize: '7px',
+    fontFamily: '"Press Start 2P", monospace',
+    stroke: '#000000',
+    strokeThickness: 4,
+    resolution: 4,
+    padding: { x: 2, y: 2 },
+  },
+  zoneName: {
+    fontSize: '7px',
     fontFamily: '"Press Start 2P", monospace',
     color: '#F39C12',
     stroke: '#000000',
+    strokeThickness: 3,
+    resolution: 4,
+  },
+  dialogue: {
+    fontSize: '8px',
+    fontFamily: '"Press Start 2P", monospace',
+    color: '#ffffff',
+    stroke: '#000000',
     strokeThickness: 2,
-    backgroundColor: '#0d0a1eCC',
-    padding: { x: 4, y: 2 },
+    wordWrap: { width: 280 },
+    lineSpacing: 6,
+    resolution: 4,
+  },
+  interactPrompt: {
+    fontSize: '7px',
+    fontFamily: '"Press Start 2P", monospace',
+    color: '#000000',
+    backgroundColor: '#F39C12',
+    padding: { x: 6, y: 4 },
+    resolution: 4,
+  },
+  floatingText: {
+    fontSize: '9px',
+    fontFamily: '"Press Start 2P", monospace',
+    color: '#F39C12',
+    stroke: '#000000',
+    strokeThickness: 3,
+    resolution: 4,
+  },
+  hud: {
+    fontSize: '7px',
+    fontFamily: '"Press Start 2P", monospace',
+    color: '#ffffff',
+    resolution: 4,
   },
 } as const;
 

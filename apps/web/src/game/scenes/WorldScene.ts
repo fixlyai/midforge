@@ -45,7 +45,7 @@ function getProp(obj: { properties?: TmjProperty[] }, name: string): any {
 }
 
 export class WorldScene extends Phaser.Scene {
-  private player!: Phaser.Physics.Arcade.Sprite;
+  public player!: Phaser.Physics.Arcade.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
@@ -103,6 +103,13 @@ export class WorldScene extends Phaser.Scene {
 
   // Map transition zones
   private transitionZones: { zone: Phaser.GameObjects.Zone; targetMap: string }[] = [];
+
+  // NPC exclamation marks (FIX 4 — Zelda-style)
+  private npcExclamations = new Map<string, Phaser.GameObjects.Text>();
+
+  // Zone entry tracking (FIX 6)
+  private lastZoneEntered = '';
+  private zoneEntryZones: { zone: Phaser.GameObjects.Zone; zoneName: string; zoneType: string }[] = [];
 
   // Mobile touch controls (driven by React MobileControlPanel via CustomEvents)
   private isMobile = false;
@@ -190,7 +197,8 @@ export class WorldScene extends Phaser.Scene {
     // ── Mobile controls (React-driven via CustomEvents) ───
     this.isMobile = this.registry.get('isMobile') === true;
     if (this.isMobile) {
-      this.cameras.main.setZoom(1.5);
+      this.cameras.main.setZoom(1);
+      this.input.addPointer(1); // allow 2 touch points for joystick+button simultaneously
       this.setupMobileEventListeners();
     }
 
@@ -242,7 +250,7 @@ export class WorldScene extends Phaser.Scene {
           const txt = this.add.text(
             this.player.x, this.player.y - 30,
             notif.message,
-            { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#F39C12' }
+            { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#F39C12', resolution: 4 }
           ).setOrigin(0.5).setDepth(200);
 
           this.tweens.add({
@@ -336,7 +344,7 @@ export class WorldScene extends Phaser.Scene {
         message,
         {
           fontFamily: '"Press Start 2P"', fontSize: '10px', color: '#F39C12',
-          stroke: '#000000', strokeThickness: 3,
+          stroke: '#000000', strokeThickness: 3, resolution: 4,
         }
       ).setOrigin(0.5).setDepth(200);
 
@@ -470,6 +478,17 @@ export class WorldScene extends Phaser.Scene {
         }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
         this.npcLabels.set(obj.name, label);
 
+        // Zelda-style exclamation mark (hidden until player is near)
+        const excl = this.add.text(px, py - 28, '!', {
+          fontFamily: '"Press Start 2P"',
+          fontSize: '14px',
+          color: '#F39C12',
+          stroke: '#000000',
+          strokeThickness: 4,
+          resolution: 4,
+        }).setOrigin(0.5, 1).setVisible(false).setDepth(PLAYER_LABEL_DEPTH + 1);
+        this.npcExclamations.set(obj.name, excl);
+
         // Mobile: tap NPC to interact (if close enough)
         sprite.setInteractive();
         sprite.on('pointerdown', () => {
@@ -483,7 +502,7 @@ export class WorldScene extends Phaser.Scene {
           } else {
             // Show floating "Get closer" hint
             const hint = this.add.text(sprite.x, sprite.y - 20, 'Get closer', {
-              fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#F39C12',
+              fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#F39C12', resolution: 4,
             }).setOrigin(0.5).setDepth(200);
             this.tweens.add({
               targets: hint, y: hint.y - 15, alpha: 0,
@@ -536,6 +555,7 @@ export class WorldScene extends Phaser.Scene {
             stroke: '#000000',
             strokeThickness: 2,
             align: 'center' as const,
+            resolution: 4,
           }
         ).setOrigin(0.5).setDepth(51);
         label.setData('zoneName', obj.name);
@@ -571,6 +591,20 @@ export class WorldScene extends Phaser.Scene {
         zone.setData('zoneType', 'map_transition');
         zone.setData('targetMap', targetMap);
         this.transitionZones.push({ zone, targetMap });
+      }
+
+      // FIX 6: Register all named zones for entry detection
+      if (obj.name && zoneType) {
+        const entryZone = this.add.zone(
+          obj.x + obj.width / 2,
+          obj.y + obj.height / 2,
+          obj.width,
+          obj.height
+        );
+        this.physics.world.enable(entryZone);
+        (entryZone.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+        (entryZone.body as Phaser.Physics.Arcade.Body).moves = false;
+        this.zoneEntryZones.push({ zone: entryZone, zoneName: obj.name, zoneType });
       }
     }
   }
@@ -859,6 +893,8 @@ export class WorldScene extends Phaser.Scene {
           this.showGlowingPath();
           this.introActive = false;
           this.inputEnabled = true;
+          // FIX 7: After intro, show world tour panning to castle
+          this.time.delayedCall(2000, () => this.showWorldTour());
         });
       },
     });
@@ -934,6 +970,31 @@ export class WorldScene extends Phaser.Scene {
     };
 
     showLine();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  WORLD TOUR — camera pan to castle on first login (FIX 7)
+  // ═══════════════════════════════════════════════════════════
+  private async showWorldTour() {
+    if (!this.player) return;
+    this.inputEnabled = false;
+
+    // Pan to castle gate (tile ~39,5 → px 624,80)
+    this.cameras.main.stopFollow();
+    this.cameras.main.pan(624, 80, 1500, 'Sine.easeInOut');
+    await this.wait(2000);
+    this.game.events.emit('zone_enter_banner', 'THE CASTLE — Reach Legend Tier');
+    await this.wait(2500);
+
+    // Pan back to player
+    this.cameras.main.pan(this.player.x, this.player.y, 1500, 'Sine.easeInOut');
+    await this.wait(1500);
+    this.cameras.main.startFollow(this.player, true, CAMERA_LERP, CAMERA_LERP);
+    this.inputEnabled = true;
+  }
+
+  private wait(ms: number): Promise<void> {
+    return new Promise(resolve => this.time.delayedCall(ms, resolve));
   }
 
   private showGlowingPath() {
@@ -1115,6 +1176,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.checkNpcProximity();
     this.checkMapTransitions();
+    this.checkZoneEntry();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1131,6 +1193,27 @@ export class WorldScene extends Phaser.Scene {
       if (dist < NPC_INTERACT_DISTANCE && dist < closestDist) {
         closestDist = dist;
         closestId = npcId;
+      }
+
+      // FIX 4: Zelda exclamation mark — show/hide + bounce
+      const excl = this.npcExclamations.get(npcId);
+      if (excl) {
+        const inRange = dist < NPC_INTERACT_DISTANCE;
+        if (inRange && !excl.visible) {
+          excl.setVisible(true);
+          excl.setPosition(sprite.x, sprite.y - 28);
+          this.tweens.add({
+            targets: excl,
+            y: sprite.y - 36,
+            duration: 400,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut',
+          });
+        } else if (!inRange && excl.visible) {
+          excl.setVisible(false);
+          this.tweens.killTweensOf(excl);
+        }
       }
     });
 
@@ -1154,6 +1237,44 @@ export class WorldScene extends Phaser.Scene {
       this.nearbyNpcId = null;
       this.npcPromptLabel?.setVisible(false);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  ZONE ENTRY DETECTION (FIX 6 — slide-in location banner)
+  // ═══════════════════════════════════════════════════════════
+  private checkZoneEntry() {
+    if (!this.player) return;
+    const px = this.player.x;
+    const py = this.player.y;
+
+    for (const { zone, zoneName, zoneType } of this.zoneEntryZones) {
+      const zb = zone.body as Phaser.Physics.Arcade.Body;
+      const inside = px >= zb.x && px <= zb.x + zb.width && py >= zb.y && py <= zb.y + zb.height;
+      if (inside && this.lastZoneEntered !== zoneName) {
+        this.lastZoneEntered = zoneName;
+        this.onZoneEnter(zoneName, zoneType);
+      }
+    }
+  }
+
+  private onZoneEnter(zoneName: string, zoneType: string) {
+    if (['safe_zone', 'atmosphere_dark', 'ambient_water'].includes(zoneType)) return;
+
+    const displayNames: Record<string, string> = {
+      'arena_entrance':     'THE ARENA',
+      'marketplace_door':   'GOLDBAG MARKET',
+      'blacksmith_door':    'IRONHIDE FORGE',
+      'elder_door':         'ELDER FORGE',
+      'tavern_door':        'THE TAVERN',
+      'hall_of_legends':    'HALL OF LEGENDS',
+      'castle_gate_trigger':'THE CASTLE',
+      'social_hub':         'CAMPFIRE',
+    };
+
+    const label = displayNames[zoneName];
+    if (!label) return;
+
+    this.game.events.emit('zone_enter_banner', label);
   }
 
   // ═══════════════════════════════════════════════════════════
