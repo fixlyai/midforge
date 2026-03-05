@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { GameCanvasWrapper } from '@/components/game/GameCanvasWrapper';
+import { WorldNav } from '@/components/game/WorldNav';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -39,18 +40,7 @@ export default async function WorldPage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 gap-4">
-      <div className="w-full max-w-[960px] flex items-center justify-between">
-        <h1 className="font-pixel text-sm text-forge-amber">MIDFORGE</h1>
-        <div className="flex gap-3">
-          <Link href="/leaderboard" className="forge-btn text-[8px]">
-            Leaderboard
-          </Link>
-          <Link href={`/profile/${playerData.xUsername}`} className="forge-btn text-[8px]">
-            Profile
-          </Link>
-        </div>
-      </div>
-
+      <WorldNav username={playerData.xUsername} />
       <GameCanvasWrapper playerData={playerData} />
     </main>
   );

@@ -140,3 +140,29 @@
   0% { opacity: 1; transform: translateY(0); }
   100% { opacity: 0; transform: translateY(-30px); }
 }
+
+@keyframes legend-shimmer {
+  0%, 100% { box-shadow: 4px 4px 0px rgba(0,0,0,0.5), 0 0 8px rgba(243,156,18,0.1); border-color: rgba(243,156,18,0.4); }
+  50% { box-shadow: 4px 4px 0px rgba(0,0,0,0.5), 0 0 20px rgba(243,156,18,0.4); border-color: rgba(243,156,18,0.8); }
+}
+
+.animate-legend-shimmer {
+  animation: legend-shimmer 3s ease-in-out infinite;
+}
+
+/* HP bar shimmer */
+@keyframes hp-shimmer {
+  0% { background-position: -100px 0; }
+  100% { background-position: 100px 0; }
+}
+
+.hp-bar-active {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+  background-size: 100px 100%;
+  animation: hp-shimmer 2s linear infinite;
+}
+
+/* Tier card hover glow */
+.forge-panel:hover {
+  box-shadow: 4px 4px 0px rgba(0,0,0,0.5), 0 0 20px rgba(243,156,18,0.2);
+}
