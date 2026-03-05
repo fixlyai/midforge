@@ -518,9 +518,9 @@ export const CHARACTER_NPC_KEYS = [
 
 // XP thresholds for form upgrades per tier
 export const FORM_UNLOCK_XP: Record<string, { upgraded: number; ascended: number }> = {
-  villager:   { upgraded: 500,       ascended: 2_000 },
-  apprentice: { upgraded: 3_000,     ascended: 8_000 },
-  merchant:   { upgraded: 15_000,    ascended: 40_000 },
+  villager:   { upgraded: 300,       ascended: 1_000 },
+  apprentice: { upgraded: 2_000,     ascended: 6_000 },
+  merchant:   { upgraded: 10_000,    ascended: 30_000 },
   warrior:    { upgraded: 60_000,    ascended: 150_000 },
   legend:     { upgraded: 500_000,   ascended: 2_000_000 },
 };

@@ -95,6 +95,9 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on('zone_enter_banner', (label: string) => {
       this.showZoneBanner(label);
     });
+
+    // ── Activity feed ticker (social proof) ──
+    this.loadActivityFeed();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -177,6 +180,69 @@ export class UIScene extends Phaser.Scene {
     });
   }
 
+  // ═══════════════════════════════════════════════════════════
+  //  ACTIVITY FEED TICKER (social proof)
+  // ═══════════════════════════════════════════════════════════
+  private feedLines: string[] = [];
+  private feedText: Phaser.GameObjects.Text | null = null;
+  private feedBg: Phaser.GameObjects.Rectangle | null = null;
+  private feedIndex = 0;
+
+  private async loadActivityFeed() {
+    try {
+      const res = await fetch('/api/events/feed');
+      if (!res.ok) return;
+      const data = await res.json();
+      this.feedLines = data.feed ?? [];
+      if (this.feedLines.length > 0) this.startFeedTicker();
+    } catch (_e) {
+      // Silent fail
+    }
+  }
+
+  private startFeedTicker() {
+    if (this.feedLines.length === 0) return;
+
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const y = 22; // Below the top-left zone label
+
+    if (!this.feedBg) {
+      this.feedBg = this.add.rectangle(W / 2, y, W, 12, 0x0d0a1e, 0.6)
+        .setScrollFactor(0).setDepth(98);
+    }
+    if (!this.feedText) {
+      this.feedText = this.add.text(W + 10, y, '', {
+        fontFamily: '"Press Start 2P"', fontSize: '4px',
+        color: '#aaaaaa', resolution: 4,
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(99);
+    }
+
+    this.showNextFeedItem();
+  }
+
+  private showNextFeedItem() {
+    if (this.feedLines.length === 0 || !this.feedText) return;
+
+    const line = this.feedLines[this.feedIndex % this.feedLines.length];
+    this.feedIndex++;
+
+    const W = this.cameras.main.width;
+    this.feedText.setText(line).setX(W + 10).setAlpha(1);
+
+    // Scroll from right to left
+    this.tweens.add({
+      targets: this.feedText,
+      x: -this.feedText.width - 20,
+      duration: 8000,
+      ease: 'Linear',
+      onComplete: () => {
+        // Next item after a brief pause
+        this.time.delayedCall(2000, () => this.showNextFeedItem());
+      },
+    });
+  }
+
   update() {
     // Update minimap player dot
     if (!this.minimapPlayer) return;
@@ -191,6 +257,51 @@ export class UIScene extends Phaser.Scene {
       this.mmOriginX + playerTileX * this.mmScale,
       this.mmOriginY + playerTileY * this.mmScale,
     );
+
+    // Update quest tracker HUD
+    this.updateQuestTracker(worldScene);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  QUEST TRACKER HUD (bottom-left, shows active quest)
+  // ═══════════════════════════════════════════════════════════
+  private questTrackerText: Phaser.GameObjects.Text | null = null;
+  private questTrackerBg: Phaser.GameObjects.Rectangle | null = null;
+  private lastQuestLabel = '';
+
+  private updateQuestTracker(worldScene: any) {
+    const qm = worldScene?.questManager;
+    if (!qm) return;
+
+    const active = qm.getActiveQuests();
+    if (active.length === 0) {
+      if (this.questTrackerText) {
+        this.questTrackerText.setVisible(false);
+        this.questTrackerBg?.setVisible(false);
+      }
+      return;
+    }
+
+    const q = active[0];
+    const label = `QUEST: ${q.questId.replace(/_/g, ' ')} (${q.progress}/${q.target})`;
+    if (label === this.lastQuestLabel) return;
+    this.lastQuestLabel = label;
+
+    const H = this.cameras.main.height;
+
+    if (!this.questTrackerBg) {
+      this.questTrackerBg = this.add.rectangle(8, H - 20, 220, 16, 0x0d0a1e, 0.8)
+        .setOrigin(0, 0.5).setStrokeStyle(1, 0xF39C12, 0.3).setDepth(100);
+    }
+    if (!this.questTrackerText) {
+      this.questTrackerText = this.add.text(14, H - 20, '', {
+        fontFamily: '"Press Start 2P"', fontSize: '5px',
+        color: '#F39C12', resolution: 4,
+      }).setOrigin(0, 0.5).setDepth(101);
+    }
+
+    this.questTrackerText.setText(label).setVisible(true);
+    this.questTrackerBg.setVisible(true);
   }
 
   private drawBar(graphics: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, pct: number, color: number) {

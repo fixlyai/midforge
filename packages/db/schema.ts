@@ -35,6 +35,9 @@ export const players = pgTable('players', {
   inviteCode: text('invite_code'),
   invitedBy: text('invited_by'),
   lastLoginDate: text('last_login_date'),
+  loginStreak: integer('login_streak').default(0),
+  arenaStreak: integer('arena_streak').default(0),
+  lastArenaDate: text('last_arena_date'),
   pendingNotifications: jsonb('pending_notifications').$type<{ type: string; message: string }[]>(),
   createdAt: timestamp('created_at').defaultNow(),
   lastSeenAt: timestamp('last_seen_at').defaultNow(),
@@ -91,6 +94,39 @@ export const arenaFights = pgTable('arena_fights', {
   resultTweetId: text('result_tweet_id'),// Reply tweet with fight result
   rtmpEgressId: text('rtmp_egress_id'),  // LiveKit egress ID for stop
   fightedAt: timestamp('fighted_at').defaultNow(),
+});
+
+// NPC quest chains (separate from the old MRR-based quests table)
+export const npcQuests = pgTable('npc_quests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  playerId: uuid('player_id').references(() => players.id).notNull(),
+  questId: text('quest_id').notNull(),
+  status: text('status').default('active'), // active | completed
+  progress: integer('progress').default(0),
+  target: integer('target').default(1),
+  acceptedAt: timestamp('accepted_at').defaultNow(),
+  completedAt: timestamp('completed_at'),
+});
+
+// Game events for activity feed + social proof
+export const gameEvents = pgTable('game_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  playerId: uuid('player_id').references(() => players.id),
+  eventType: text('event_type').notNull(), // evolution | arena_win | tier_up | quest_complete | new_player
+  username: text('username').notNull(),
+  metadata: jsonb('metadata').$type<Record<string, any>>(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Daily quest progress (resets each day)
+export const dailyQuestProgress = pgTable('daily_quest_progress', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  playerId: uuid('player_id').references(() => players.id).notNull(),
+  questId: text('quest_id').notNull(),
+  dateStr: text('date_str').notNull(), // YYYY-MM-DD
+  progress: integer('progress').default(0),
+  target: integer('target').default(1),
+  completed: boolean('completed').default(false),
 });
 
 export const leaderboard = pgTable('leaderboard', {

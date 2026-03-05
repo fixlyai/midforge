@@ -44,6 +44,22 @@ function useIsMobile() {
   return mobile;
 }
 
+async function claimDailyLogin(game: any) {
+  try {
+    const res = await fetch('/api/player/daily-login', { method: 'POST' });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.alreadyClaimed || !data.reward) return;
+    // Show reward via zone banner
+    game.events.emit(
+      'zone_enter_banner',
+      `DAY ${data.streak} — +${data.reward.xp} XP  +${data.reward.gold}G`
+    );
+  } catch (_e) {
+    // Non-critical
+  }
+}
+
 export function GameCanvas({ playerData }: { playerData: PlayerData }) {
   const gameRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -130,6 +146,8 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
         if (game.scene.isActive('UIScene') === false) {
           game.scene.start('UIScene');
         }
+        // Claim daily login reward on world load
+        claimDailyLogin(game);
       });
 
       // Bridge Phaser events → React state

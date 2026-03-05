@@ -13,6 +13,9 @@ import {
   INTRO, TEXT_STYLES,
   getCharacterSpriteKey, TIER_PARTICLE_COLORS,
 } from '@midforge/shared/constants/game';
+import { QuestManager } from '@/game/managers/QuestManager';
+import { NPC_QUEST_CHAINS } from '@/game/data/npcQuests';
+import { getAmbientLine } from '@/game/data/ambientDialogue';
 
 // ── TMJ type helpers ─────────────────────────────────────────
 interface TmjProperty { name: string; type: string; value: any }
@@ -57,6 +60,7 @@ export class WorldScene extends Phaser.Scene {
   private inputEnabled = false;
 
   private footstepCounter = 0;
+  private stuckFrames = 0;
   private groundData: number[] = [];
   private mapCols = 80;
   private mapRows = 70;
@@ -110,6 +114,14 @@ export class WorldScene extends Phaser.Scene {
   // Zone entry tracking (FIX 6)
   private lastZoneEntered = '';
   private zoneEntryZones: { zone: Phaser.GameObjects.Zone; zoneName: string; zoneType: string }[] = [];
+
+  // Quest system
+  public questManager!: QuestManager;
+
+  // Ambient dialogue cooldowns (NPC name → last trigger time)
+  private ambientCooldowns = new Map<string, number>();
+  private readonly AMBIENT_COOLDOWN_MS = 30_000; // 30 seconds per NPC
+  private readonly AMBIENT_RANGE = 120;
 
   // Mobile touch controls (driven by React MobileControlPanel via CustomEvents)
   private isMobile = false;
@@ -230,6 +242,24 @@ export class WorldScene extends Phaser.Scene {
 
     // ── Show pending notifications (daily login XP, etc.) ──
     this.showPendingNotifications(playerData);
+
+    // ── Quest Manager (Solo Content Layer) ──
+    this.questManager = new QuestManager(this, this.playerTier, playerData?.id ?? '');
+    this.questManager.loadFromServer();
+    this.questManager.setOnQuestComplete((questId, reward) => {
+      // Gold flash + floating reward text
+      this.flashScreen(0xFFD700, 300);
+      const txt = this.add.text(
+        this.player.x, this.player.y - 30,
+        `+${reward.xp} XP  +${reward.gold}G`,
+        { fontFamily: '"Press Start 2P"', fontSize: '9px', color: '#F39C12', stroke: '#000000', strokeThickness: 3, resolution: 4 }
+      ).setOrigin(0.5).setDepth(200);
+      this.tweens.add({
+        targets: txt, y: txt.y - 50, alpha: 0,
+        duration: 3000, ease: 'Power2',
+        onComplete: () => txt.destroy(),
+      });
+    });
 
     this.connectMultiplayer(playerData);
     this.game.events.emit('world_ready');
@@ -1108,6 +1138,40 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  private flashScreen(color = 0xFFFFFF, duration = 200) {
+    const flash = this.add.rectangle(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      color, 0.7
+    ).setScrollFactor(0).setDepth(999);
+    this.tweens.add({
+      targets: flash, alpha: 0, duration,
+      onComplete: () => flash.destroy(),
+    });
+  }
+
+  private showAmbientBubble(x: number, y: number, text: string) {
+    const bubble = this.add.text(x, y, text, {
+      fontFamily: '"Press Start 2P"', fontSize: '5px',
+      color: '#cccccc', backgroundColor: '#1a0a2eCC',
+      padding: { x: 4, y: 3 },
+      resolution: 4,
+      wordWrap: { width: 120 },
+    }).setOrigin(0.5, 1).setDepth(150);
+
+    this.tweens.add({
+      targets: bubble,
+      y: y - 12,
+      alpha: 0,
+      duration: 4000,
+      ease: 'Power1',
+      delay: 2000,
+      onComplete: () => bubble.destroy(),
+    });
+  }
+
   private playInteractSound() {
     if (this.cache.audio.exists('sfx_interact')) {
       this.sound.play('sfx_interact', { volume: 0.3 });
@@ -1139,6 +1203,22 @@ export class WorldScene extends Phaser.Scene {
 
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
     playerBody.setVelocity(vx, vy);
+
+    // BUG 4: Auto-unstuck — nudge player if stuck against collision for 10+ frames
+    const actuallyMoved = Math.abs(playerBody.velocity.x) > 1 || Math.abs(playerBody.velocity.y) > 1;
+    if (moving && !actuallyMoved) {
+      this.stuckFrames++;
+      if (this.stuckFrames > 10) {
+        const cx = 624, cy = 560;
+        this.player.setPosition(
+          this.player.x + (cx > this.player.x ? 3 : -3),
+          this.player.y + (cy > this.player.y ? 3 : -3),
+        );
+        this.stuckFrames = 0;
+      }
+    } else {
+      this.stuckFrames = 0;
+    }
 
     // Play walk/idle animations when 48×48 sprites are active
     if (this.useNewSprites) {
@@ -1215,6 +1295,20 @@ export class WorldScene extends Phaser.Scene {
           this.tweens.killTweensOf(excl);
         }
       }
+
+      // Ambient dialogue bubble — within AMBIENT_RANGE, cooldown per NPC
+      if (dist < this.AMBIENT_RANGE && dist > NPC_INTERACT_DISTANCE) {
+        const now = Date.now();
+        const lastTime = this.ambientCooldowns.get(npcId) ?? 0;
+        if (now - lastTime > this.AMBIENT_COOLDOWN_MS) {
+          this.ambientCooldowns.set(npcId, now);
+          const npcName = sprite.getData('name') as string;
+          const line = getAmbientLine(npcName);
+          if (line) {
+            this.showAmbientBubble(sprite.x, sprite.y - 24, line);
+          }
+        }
+      }
     });
 
     if (closestId) {
@@ -1222,21 +1316,60 @@ export class WorldScene extends Phaser.Scene {
       const sprite = this.npcSprites.get(closestId)!;
       const name = sprite.getData('name');
       if (this.npcPromptLabel) {
-        this.npcPromptLabel.setText(this.isMobile ? `TAP ${name}` : `[E] ${name}`);
+        this.npcPromptLabel.setText(`[E] ${name}`);
         this.npcPromptLabel.setPosition(sprite.x, sprite.y + 14);
         this.npcPromptLabel.setVisible(true);
       }
 
       if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
-        this.playInteractSound();
-        const event = sprite.getData('interactionEvent');
-        const dialogue = sprite.getData('dialogue');
-        this.game.events.emit(event, { npcId: closestId, dialogue });
+        this.interactWithNPC(closestId);
       }
     } else {
       this.nearbyNpcId = null;
       this.npcPromptLabel?.setVisible(false);
     }
+  }
+
+  private interactWithNPC(npcId: string) {
+    const sprite = this.npcSprites.get(npcId);
+    if (!sprite) return;
+    this.playInteractSound();
+
+    const npcName = sprite.getData('name') as string;
+    const eventName = sprite.getData('interactionEvent') as string;
+    const fallbackDialogue = sprite.getData('dialogue') as string;
+
+    // Notify quest manager
+    this.questManager?.onNPCTalked(npcName);
+
+    // Check if NPC has a quest chain
+    const npcKey = Object.keys(NPC_QUEST_CHAINS).find(
+      k => NPC_QUEST_CHAINS[k].npcName === npcName
+    );
+
+    if (npcKey && this.questManager) {
+      const { dialogue, questId, hasQuest } = this.questManager.getNPCDialogue(npcKey);
+      if (dialogue) {
+        // Show Zelda-style typewriter dialogue
+        this.inputEnabled = false;
+        this.showTypewriterDialogue([dialogue], () => {
+          this.inputEnabled = true;
+          // If there's a quest to accept, accept it
+          if (hasQuest && questId) {
+            this.questManager.acceptQuest(questId);
+            this.game.events.emit('zone_enter_banner', `QUEST ACCEPTED`);
+          }
+          // If quest is complete (progress met), complete it
+          if (!hasQuest && questId) {
+            // Quest completion is handled by QuestManager internally
+          }
+        });
+        return;
+      }
+    }
+
+    // Fallback: emit to React layer (for panels like arena, marketplace, etc.)
+    this.game.events.emit(eventName, { npcId, dialogue: fallbackDialogue });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1258,6 +1391,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private onZoneEnter(zoneName: string, zoneType: string) {
+    // Notify quest manager
+    this.questManager?.onZoneEntered(zoneName);
+
     if (['safe_zone', 'atmosphere_dark', 'ambient_water'].includes(zoneType)) return;
 
     const displayNames: Record<string, string> = {
@@ -1301,12 +1437,7 @@ export class WorldScene extends Phaser.Scene {
 
   private handleMobileInteract() {
     if (!this.nearbyNpcId) return;
-    const sprite = this.npcSprites.get(this.nearbyNpcId);
-    if (!sprite) return;
-    this.playInteractSound();
-    const event = sprite.getData('interactionEvent');
-    const dialogue = sprite.getData('dialogue');
-    this.game.events.emit(event, { npcId: this.nearbyNpcId, dialogue });
+    this.interactWithNPC(this.nearbyNpcId);
   }
 
   // ═══════════════════════════════════════════════════════════
