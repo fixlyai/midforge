@@ -183,7 +183,7 @@ interface GhostFightResult {
   goldReward: number;
   evolved: boolean;
   ghost: { username: string; tier: string; level: number; difficulty: number };
-  fightLog: string[];
+  fightLog: any[];
   shareCard: { title: string; subtitle: string };
 }
 
@@ -243,9 +243,12 @@ export function ArenaPanel({ onClose }: { onClose: () => void }) {
           <div>
             {/* Fight log */}
             <div className="forge-panel p-2 mb-3 max-h-32 overflow-y-auto">
-              {result.fightLog.slice(0, logIndex).map((line, i) => (
-                <p key={i} className="font-pixel text-[6px] text-forge-wheat/70 mb-1">{line}</p>
-              ))}
+              {result.fightLog.slice(0, logIndex).map((entry, i) => {
+                const line = typeof entry === 'string'
+                  ? entry
+                  : `R${entry.round}: You ${entry.cDmg}dmg → ${Math.round(entry.dHp)}hp | Foe ${entry.dDmg}dmg → ${Math.round(entry.cHp)}hp`;
+                return <p key={i} className="font-pixel text-[6px] text-forge-wheat/70 mb-1">{line}</p>;
+              })}
             </div>
 
             {/* Result */}

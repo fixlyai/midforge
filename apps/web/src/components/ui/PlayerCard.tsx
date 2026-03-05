@@ -15,7 +15,7 @@ interface FightResult {
   winner: string;
   winnerId: string;
   xpTransferred: number;
-  fightLog: string[];
+  fightLog: any[];
   shareCard: { title: string; subtitle: string; cta: string };
 }
 
