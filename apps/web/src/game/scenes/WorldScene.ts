@@ -154,6 +154,12 @@ export class WorldScene extends Phaser.Scene {
   private brigandRespawnTimer: Phaser.Time.TimerEvent | null = null;
   private brigandEncounterCooldown = 0;
 
+  // Cinematic Village Scenes — time-based ambient events
+  private earlyRiserAwarded = false;
+  private midnightBellPlayed = false;
+  private campfireGatheringPlayed = false;
+  private sceneCheckTimer: Phaser.Time.TimerEvent | null = null;
+
   // Shooting Star — silent random event
   private readonly STAR_MIN_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
   private readonly STAR_MAX_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
@@ -317,6 +323,9 @@ export class WorldScene extends Phaser.Scene {
 
     // ── Brigands — hostile encounter NPCs ──
     this.spawnBrigands();
+
+    // ── Cinematic Village Scenes — time-based ambient events ──
+    this.initCinematicScenes();
 
     // ── Shooting Star — silent random event ──
     this.initShootingStar();
@@ -1807,6 +1816,205 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  CINEMATIC VILLAGE SCENES — time-based ambient events
+  // ═══════════════════════════════════════════════════════════
+  private initCinematicScenes() {
+    // Check immediately on load, then every 60 seconds
+    this.checkTimeBasedScenes();
+    this.sceneCheckTimer = this.time.addEvent({
+      delay: 60_000,
+      loop: true,
+      callback: () => this.checkTimeBasedScenes(),
+    });
+  }
+
+  private checkTimeBasedScenes() {
+    const h = new Date().getHours();
+
+    // Scene 2: ForgeMaster's Morning (05:00–08:00)
+    if (h >= 5 && h < 8 && !this.earlyRiserAwarded) {
+      this.earlyRiserAwarded = true;
+      this.time.delayedCall(3000, () => this.playForgeMasterMorning());
+    }
+
+    // Scene 1: Midnight Bell (23:00–00:00)
+    if (h === 23 && !this.midnightBellPlayed) {
+      this.midnightBellPlayed = true;
+      this.time.delayedCall(5000, () => this.playMidnightBell());
+    }
+
+    // Scene 4: Campfire Gathering (20:00–22:00)
+    if (h >= 20 && h < 22 && !this.campfireGatheringPlayed) {
+      this.campfireGatheringPlayed = true;
+      this.time.delayedCall(8000, () => this.playCampfireGathering());
+    }
+  }
+
+  // ─── Scene 2: ForgeMaster's Morning ───
+  private playForgeMasterMorning() {
+    const fm = this.npcSprites.get('ForgeMaster');
+    if (!fm) return;
+
+    const fx = fm.x;
+    const fy = fm.y;
+
+    // Forge glow — orange square near the ForgeMaster
+    const forgeGlow = this.add.circle(fx + 12, fy + 4, 8, 0xF39C12, 0.3).setDepth(5);
+    this.tweens.add({
+      targets: forgeGlow,
+      alpha: 0.5, scaleX: 1.3, scaleY: 1.3,
+      duration: 800, yoyo: true, repeat: 3, ease: 'Sine.easeInOut',
+      onComplete: () => forgeGlow.destroy(),
+    });
+
+    // Sparks — 12 small orange dots floating upward
+    for (let i = 0; i < 12; i++) {
+      this.time.delayedCall(i * 200, () => {
+        const sx = fx + 8 + Math.random() * 10;
+        const sy = fy;
+        const spark = this.add.circle(sx, sy, 1.5, 0xF39C12, 0.9).setDepth(201);
+        this.tweens.add({
+          targets: spark,
+          y: sy - 20 - Math.random() * 15,
+          x: sx + (Math.random() - 0.5) * 12,
+          alpha: 0,
+          duration: 600 + Math.random() * 400,
+          ease: 'Power2',
+          onComplete: () => spark.destroy(),
+        });
+      });
+    }
+
+    // Ambient dialogue bubble
+    this.time.delayedCall(800, () => {
+      this.showAmbientBubble(fm.x, fm.y - 24, 'Early riser. Good.\nThe forge never sleeps.');
+    });
+
+    // Early riser bonus
+    this.time.delayedCall(2500, () => {
+      if (!this.player) return;
+      const txt = this.add.text(
+        this.player.x, this.player.y - 20,
+        '+10 XP — Early Riser Bonus',
+        { fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#F39C12', stroke: '#000000', strokeThickness: 3, resolution: 4 }
+      ).setOrigin(0.5).setDepth(202);
+      this.tweens.add({
+        targets: txt, y: txt.y - 40, alpha: 0,
+        duration: 3000, ease: 'Power2',
+        onComplete: () => txt.destroy(),
+      });
+
+      fetch('/api/player/award-xp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 10, source: 'early_riser' }),
+      }).then(r => r.json()).then(d => {
+        if (d.newXP !== undefined) this.game.events.emit('xp_updated', d.newXP);
+      }).catch(() => {});
+    });
+  }
+
+  // ─── Scene 1: Midnight Bell ───
+  private playMidnightBell() {
+    if (!this.player) return;
+
+    // Bell visual — white circle above center of map
+    const bellX = 640;
+    const bellY = 100;
+    const bell = this.add.circle(bellX, bellY, 6, 0xFFFFFF, 0.8).setDepth(200);
+    const bellRing = this.add.text(bellX, bellY - 14, '🔔', {
+      fontSize: '16px', resolution: 4,
+    }).setOrigin(0.5).setDepth(201);
+
+    // Swing animation — 3 tolls
+    let swingCount = 0;
+    const swingOnce = () => {
+      if (swingCount >= 3) {
+        this.tweens.add({
+          targets: [bell, bellRing],
+          alpha: 0, duration: 800,
+          onComplete: () => { bell.destroy(); bellRing.destroy(); },
+        });
+        return;
+      }
+      swingCount++;
+      this.tweens.add({
+        targets: bellRing,
+        x: bellX - 8, duration: 300, ease: 'Sine.easeInOut',
+        onComplete: () => {
+          this.tweens.add({
+            targets: bellRing,
+            x: bellX + 8, duration: 300, ease: 'Sine.easeInOut',
+            onComplete: () => {
+              this.tweens.add({
+                targets: bellRing,
+                x: bellX, duration: 200, ease: 'Sine.easeOut',
+                onComplete: () => this.time.delayedCall(400, swingOnce),
+              });
+            },
+          });
+        },
+      });
+    };
+    swingOnce();
+
+    // Elder dialogue
+    const elder = this.npcSprites.get('TheElder');
+    if (elder) {
+      this.time.delayedCall(2000, () => {
+        this.showAmbientBubble(elder.x, elder.y - 24, 'Another day ends.\nAnother begins.');
+      });
+    }
+
+    // Pause wandering NPCs briefly
+    this.wanderingNpcs.forEach(w => {
+      w.timer?.remove();
+      (w.sprite.body as Phaser.Physics.Arcade.Body)?.setVelocity(0, 0);
+    });
+    this.time.delayedCall(6000, () => {
+      this.wanderingNpcs.forEach(w => this.scheduleWanderAction(w));
+    });
+  }
+
+  // ─── Scene 4: Campfire Gathering ───
+  private playCampfireGathering() {
+    // Find campfire glow objects (already created in initAnimatedTiles)
+    // Intensify them temporarily
+    this.campfireGlows.forEach(g => {
+      this.tweens.add({
+        targets: g,
+        alpha: 0.6, scaleX: 2.5, scaleY: 2.5,
+        duration: 2000, ease: 'Sine.easeInOut',
+      });
+    });
+
+    // Sequential NPC dialogue — staged conversation
+    const dialogues = [
+      { npc: 'ForgeMaster', text: 'The castle won\'t\nopen itself.', delay: 2000 },
+      { npc: 'TheElder', text: 'Patience. The right\none will come.', delay: 6000 },
+      { npc: 'CastleGuard', text: '...', delay: 10000 },
+    ];
+
+    for (const d of dialogues) {
+      this.time.delayedCall(d.delay, () => {
+        const npc = this.npcSprites.get(d.npc);
+        if (npc) this.showAmbientBubble(npc.x, npc.y - 24, d.text);
+      });
+    }
+
+    // Return campfire to normal after 60 seconds
+    this.time.delayedCall(60000, () => {
+      this.campfireGlows.forEach(g => {
+        this.tweens.add({
+          targets: g,
+          alpha: 0.15, scaleX: 1, scaleY: 1,
+          duration: 3000, ease: 'Sine.easeInOut',
+        });
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  SHOOTING STAR — silent random discovery event
   // ═══════════════════════════════════════════════════════════
   private initShootingStar() {
@@ -2091,5 +2299,6 @@ export class WorldScene extends Phaser.Scene {
     this.brigandRespawnTimer?.remove();
     this.starTimer?.remove();
     this.removeStarLanding();
+    this.sceneCheckTimer?.remove();
   }
 }
