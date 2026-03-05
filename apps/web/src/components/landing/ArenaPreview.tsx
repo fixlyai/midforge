@@ -204,7 +204,7 @@ export function ArenaPreview() {
             <p className="font-pixel text-[5px] text-forge-wheat/30 text-center mt-0.5">{left.hp}/100</p>
           </div>
           <LpcSprite
-            sheet="/sprites/characters/warrior_base.png"
+            sheet="/sprites/characters/warrior_base.png?v=3"
             row={fighting ? ROW_RIGHT : ROW_DOWN}
             animate={fighting && !winner}
             defeated={winner === 'right'}
@@ -243,7 +243,7 @@ export function ArenaPreview() {
             <p className="font-pixel text-[5px] text-forge-wheat/30 text-center mt-0.5">{right.hp}/100</p>
           </div>
           <LpcSprite
-            sheet="/sprites/characters/merchant_base.png"
+            sheet="/sprites/characters/merchant_base.png?v=3"
             row={fighting ? ROW_LEFT : ROW_DOWN}
             animate={fighting && !winner}
             defeated={winner === 'left'}

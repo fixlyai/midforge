@@ -80,23 +80,23 @@ const CHARACTERS = {
   // ═══ MERCHANT TIER ═══
   merchant_base: [
     'body/bodies/male/walk/olive.png',
-    'legs/pants/male/walk/red.png',
+    'legs/pants/male/walk/brown.png',
     'feet/shoes/basic/male/walk/brown.png',
-    'torso/clothes/longsleeve/longsleeve/male/walk/maroon.png',
+    'torso/clothes/longsleeve/longsleeve/male/walk/purple.png',
     'hair/bangsshort/adult/walk/light_brown.png',
   ],
   merchant_upgraded: [
     'body/bodies/male/walk/olive.png',
-    'legs/pants/male/walk/red.png',
+    'legs/pants/male/walk/brown.png',
     'feet/shoes/basic/male/walk/brown.png',
-    'torso/clothes/longsleeve/longsleeve/male/walk/maroon.png',
+    'torso/clothes/longsleeve/longsleeve/male/walk/purple.png',
     'hair/bangsshort/adult/walk/light_brown.png',
   ],
   merchant_ascended: [
     'body/bodies/male/walk/olive.png',
-    'legs/pants/male/walk/red.png',
+    'legs/pants/male/walk/brown.png',
     'feet/armour/plate/male/walk/gold.png',
-    'torso/clothes/longsleeve/longsleeve/male/walk/maroon.png',
+    'torso/clothes/longsleeve/longsleeve/male/walk/purple.png',
     'hair/bangsshort/adult/walk/light_brown.png',
     'hat/helmet/barbarian/adult/walk/gold.png',
   ],
@@ -169,9 +169,9 @@ const CHARACTERS = {
   ],
   npc_merchant: [
     'body/bodies/male/walk/olive.png',
-    'legs/pants/male/walk/red.png',
+    'legs/pants/male/walk/brown.png',
     'feet/shoes/basic/male/walk/brown.png',
-    'torso/clothes/longsleeve/longsleeve/male/walk/maroon.png',
+    'torso/clothes/longsleeve/longsleeve/male/walk/purple.png',
     'hair/bangsshort/adult/walk/dark_brown.png',
   ],
   npc_villager: [
