@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import BiomeBackground from './BiomeBackground';
 import type { BiomeKey } from './BiomeBackground';
+import BattleSprite from './BattleSprite';
 
 // ─── Quest Panel ───
 interface QuestDef {
@@ -500,7 +501,7 @@ function ArenaFightScene({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', minHeight: 100, padding: '4px 12px', position: 'relative' }}>
             {/* Player */}
             <div style={{ position: 'relative', animation: playerEntered ? (hitLeft ? 'attackLunge 0.4s ease-in-out' : shakeLeft ? 'shakeX 0.4s ease-in-out' : 'none') : 'slideInLeft 0.4s ease-out forwards' }}>
-              <PixelSprite color={playerColor} tier={playerTier} hit={hitLeft} dead={isDead(cHp)} />
+              <BattleSprite tier={playerTier} hit={hitLeft} dead={isDead(cHp)} />
               {dmgLeft !== null && <DamageNumber damage={dmgLeft} x="left" critical={lastAction === 'block'} />}
               {lastAction === 'block' && !canAttack && (
                 <div style={{ position: 'absolute', inset: -4, border: '2px solid #4A90D9', borderRadius: 8, animation: 'blockShimmer 0.6s infinite', pointerEvents: 'none' }} />
@@ -517,7 +518,7 @@ function ArenaFightScene({
 
             {/* Ghost */}
             <div style={{ position: 'relative', animation: ghostEntered ? (hitRight ? 'attackLungeR 0.4s ease-in-out' : shakeRight ? 'shakeX 0.4s ease-in-out' : 'none') : 'slideInRight 0.4s ease-out forwards' }}>
-              <PixelSprite color={ghostColor} flipped tier={result.ghost.tier} hit={hitRight} dead={isDead(dHp)} />
+              <BattleSprite tier={result.ghost.tier} flipped hit={hitRight} dead={isDead(dHp)} tintColor={ghostColor} />
               {dmgRight !== null && <DamageNumber damage={dmgRight} x="right" critical={lastAction === 'powerStrike'} />}
               {ghostAction === 'block' && (
                 <div style={{ position: 'absolute', inset: -4, border: '2px solid #4A90D9', borderRadius: 8, animation: 'blockShimmer 0.6s infinite', pointerEvents: 'none' }} />
