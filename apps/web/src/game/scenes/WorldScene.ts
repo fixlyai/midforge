@@ -405,6 +405,10 @@ export class WorldScene extends Phaser.Scene {
   // ═══════════════════════════════════════════════════════════
   //  GROUND LAYER — render tile-by-tile from .tmj data
   // ═══════════════════════════════════════════════════════════
+  // GIDs 1-4 are base grass tiles; anything else is a decoration overlay
+  private static readonly GRASS_GIDS = new Set([1, 2, 3, 4]);
+  private static readonly DEFAULT_GRASS_GID = 4; // most common grass
+
   private renderGroundLayer(map: TmjMap) {
     const layer = map.layers.find(l => l.name === 'Ground' && l.type === 'tilelayer') as TmjTileLayer | undefined;
     if (!layer) return;
@@ -423,27 +427,67 @@ export class WorldScene extends Phaser.Scene {
       const px = c * ts + ts / 2;
       const py = r * ts + ts / 2;
 
-      // Determine which tileset this GID belongs to
       const localId = gid - FIRSTGID_TOWN;
-      this.add.image(px, py, townKey, localId).setDepth(0);
+
+      if (WorldScene.GRASS_GIDS.has(gid)) {
+        // Base grass — render at depth 0
+        this.add.image(px, py, townKey, localId).setDepth(0);
+      } else {
+        // Decoration tile (trees, water, etc.) — render grass underneath first
+        const grassLocalId = WorldScene.DEFAULT_GRASS_GID - FIRSTGID_TOWN;
+        this.add.image(px, py, townKey, grassLocalId).setDepth(0);
+        // Overlay the decoration on top at depth 2 (above grass, below NPCs/player)
+        this.add.image(px, py, townKey, localId).setDepth(2);
+      }
     }
   }
 
   // ═══════════════════════════════════════════════════════════
   //  COLLISION LAYER — create physics bodies from objects
   // ═══════════════════════════════════════════════════════════
+  // Collision objects to SKIP — decorations/forests should not block the player
+  private static readonly SKIP_COLLISION = new Set([
+    'forest_nw', 'forest_ne', 'pond',
+    'future_mines_gate', 'future_harbor_wall', 'future_academy_wall',
+  ]);
+
+  // Collision objects to SHRINK — buildings should only block the actual structure, not the approach area
+  private static readonly SHRINK_COLLISION: Record<string, { dx: number; dy: number; dw: number; dh: number }> = {
+    blacksmith:    { dx: 16, dy: 16, dw: -48, dh: -48 },
+    marketplace:   { dx: 16, dy: 16, dw: -48, dh: -64 },
+    tavern:        { dx: 16, dy: 16, dw: -48, dh: -48 },
+    elder_house:   { dx: 16, dy: 16, dw: -48, dh: -48 },
+  };
+
   private renderCollisionLayer(map: TmjMap) {
     const layer = map.layers.find(l => l.name === 'Collision' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
     if (!layer) return;
 
     for (const obj of layer.objects) {
-      const cx = obj.x + obj.width / 2;
-      const cy = obj.y + obj.height / 2;
+      // Skip decorative collision (trees, ponds, future gates)
+      if (WorldScene.SKIP_COLLISION.has(obj.name)) continue;
+
+      let x = obj.x;
+      let y = obj.y;
+      let w = obj.width;
+      let h = obj.height;
+
+      // Shrink building collision rects so players can approach NPCs
+      const shrink = WorldScene.SHRINK_COLLISION[obj.name];
+      if (shrink) {
+        x += shrink.dx;
+        y += shrink.dy;
+        w += shrink.dw;
+        h += shrink.dh;
+      }
+
+      const cx = x + w / 2;
+      const cy = y + h / 2;
       const wall = this.physics.add.staticImage(cx, cy, '__DEFAULT');
       wall.setVisible(false).setDepth(0);
       const b = wall.body as Phaser.Physics.Arcade.Body;
-      b.setSize(obj.width, obj.height);
-      b.setOffset(-obj.width / 2, -obj.height / 2);
+      b.setSize(w, h);
+      b.setOffset(-w / 2, -h / 2);
       this.walls.add(wall);
     }
   }
@@ -519,7 +563,7 @@ export class WorldScene extends Phaser.Scene {
         }).setOrigin(0.5, 1).setVisible(false).setDepth(PLAYER_LABEL_DEPTH + 1);
         this.npcExclamations.set(obj.name, excl);
 
-        // Mobile: tap NPC to interact (if close enough)
+        // Mobile: tap NPC to interact — uses unified interactWithNPC path
         sprite.setInteractive();
         sprite.on('pointerdown', () => {
           if (!this.player) return;
@@ -527,10 +571,8 @@ export class WorldScene extends Phaser.Scene {
             this.player.x, this.player.y, sprite.x, sprite.y
           );
           if (dist < NPC_INTERACT_DISTANCE) {
-            this.playInteractSound();
-            this.game.events.emit(eventName, { npcId: obj.name, dialogue });
+            this.interactWithNPC(obj.name);
           } else {
-            // Show floating "Get closer" hint
             const hint = this.add.text(sprite.x, sprite.y - 20, 'Get closer', {
               fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#F39C12', resolution: 4,
             }).setOrigin(0.5).setDepth(200);
@@ -1368,8 +1410,18 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    // Fallback: emit to React layer (for panels like arena, marketplace, etc.)
-    this.game.events.emit(eventName, { npcId, dialogue: fallbackDialogue });
+    // For functional NPCs (arena, marketplace, inventory, quests) → emit to React panel
+    // For ambient NPCs → show dialogue via typewriter
+    if (eventName === 'npc_ambient' || eventName === 'npc_quest_giver') {
+      if (fallbackDialogue) {
+        this.inputEnabled = false;
+        this.showTypewriterDialogue([fallbackDialogue], () => {
+          this.inputEnabled = true;
+        });
+      }
+    } else {
+      this.game.events.emit(eventName, { npcId, dialogue: fallbackDialogue });
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
