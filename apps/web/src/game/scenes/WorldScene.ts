@@ -2187,6 +2187,98 @@ export class WorldScene extends Phaser.Scene {
     this.game.events.emit('activity_feed', '✨ A hooded figure was spotted near the old oak.');
   }
 
+  // ─── Scene 6: Evolution Witness ───
+  // Call this when another player evolves (tier change visible to all online)
+  private playEvolutionWitness(playerX: number, playerY: number, username: string, newTier: string) {
+    // Gold pillar of light shooting upward from that position
+    const pillar = this.add.rectangle(playerX, playerY - 40, 6, 80, 0xF39C12, 0.6).setDepth(200);
+    this.tweens.add({
+      targets: pillar,
+      scaleY: 2.5, alpha: 0,
+      duration: 1500, ease: 'Power2',
+      onComplete: () => pillar.destroy(),
+    });
+
+    // 10 gold particles burst from the pillar
+    for (let i = 0; i < 10; i++) {
+      const p = this.add.circle(
+        playerX + (Math.random() - 0.5) * 20,
+        playerY - 60 - Math.random() * 40,
+        2, 0xF39C12, 0.8
+      ).setDepth(201);
+      this.tweens.add({
+        targets: p,
+        y: p.y - 30 - Math.random() * 20,
+        x: p.x + (Math.random() - 0.5) * 30,
+        alpha: 0,
+        duration: 800 + Math.random() * 400,
+        ease: 'Power2',
+        onComplete: () => p.destroy(),
+      });
+    }
+
+    // Screen-edge amber flash for this viewer
+    this.flashScreen(0xF39C12, 300);
+
+    // Activity feed
+    this.game.events.emit('activity_feed', `⚡ @${username} just ascended to ${newTier} Tier!`);
+  }
+
+  // ─── Scene 8: Castle Awakening ───
+  // One-time global event when first player reaches Warrior tier
+  private playCastleAwakening() {
+    // Red glow on castle area (roughly center-right of map)
+    const castleX = 880;
+    const castleY = 340;
+    const glow = this.add.circle(castleX, castleY, 30, 0xFF0000, 0).setDepth(5);
+    this.tweens.add({
+      targets: glow,
+      alpha: 0.2, scaleX: 2, scaleY: 2,
+      duration: 3000, ease: 'Sine.easeInOut',
+      yoyo: true, repeat: 2,
+      onComplete: () => {
+        // Leave a permanent faint glow
+        glow.setAlpha(0.08).setScale(1.5);
+      },
+    });
+
+    // CastleGuard new dialogue
+    const guard = this.npcSprites.get('CastleGuard');
+    if (guard) {
+      this.time.delayedCall(2000, () => {
+        this.showAmbientBubble(guard.x, guard.y - 24, 'Something stirs behind\nthe gate. Someone\ngrows strong enough.');
+      });
+    }
+
+    // Activity feed
+    this.game.events.emit('activity_feed', '🏰 The castle stirs. A Warrior walks among us.');
+
+    // Award all online players +100 XP
+    if (this.player) {
+      this.time.delayedCall(4000, () => {
+        if (!this.player) return;
+        const txt = this.add.text(
+          this.player.x, this.player.y - 20,
+          '+100 XP — Witness to History',
+          { fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#C0392B', stroke: '#000000', strokeThickness: 3, resolution: 4 }
+        ).setOrigin(0.5).setDepth(202);
+        this.tweens.add({
+          targets: txt, y: txt.y - 40, alpha: 0,
+          duration: 3000, ease: 'Power2',
+          onComplete: () => txt.destroy(),
+        });
+
+        fetch('/api/player/award-xp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: 100, source: 'witness_to_history' }),
+        }).then(r => r.json()).then(d => {
+          if (d.newXP !== undefined) this.game.events.emit('xp_updated', d.newXP);
+        }).catch(() => {});
+      });
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════
   //  SHOOTING STAR — silent random discovery event
   // ═══════════════════════════════════════════════════════════
