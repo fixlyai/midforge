@@ -90,6 +90,21 @@ export class PreloadScene extends Phaser.Scene {
       });
     }
 
+    // ── Cute Fantasy Animals (32×32 frames) ──
+    for (let i = 1; i <= 4; i++) {
+      this.load.spritesheet(`cf_duck_${i}`, `/assets/animals/Duck/Duck_0${i}.png`, {
+        frameWidth: 32, frameHeight: 32,
+      });
+    }
+    this.load.spritesheet('cf_duck_hat', '/assets/animals/Duck/Duck_in_a_hat.png', {
+      frameWidth: 32, frameHeight: 32,
+    });
+    for (let i = 1; i <= 2; i++) {
+      this.load.spritesheet(`cf_horse_${i}`, `/assets/animals/Horse/Horse_0${i}.png`, {
+        frameWidth: 32, frameHeight: 32,
+      });
+    }
+
     // Suppress errors for missing sprite files (assets may not exist yet)
     this.load.on('loaderror', (file: any) => {
       if (file?.key && (file.key.includes('_base') || file.key.includes('_upgraded') ||
@@ -201,6 +216,42 @@ export class PreloadScene extends Phaser.Scene {
             repeat: -1,
           });
         }
+      }
+    }
+
+    // ── Animal animations (32×32 frames, 8 cols) ──
+    const ANIMAL_COLS = 8;
+    // Duck idle: row 0, first 2 frames
+    for (let i = 1; i <= 4; i++) {
+      const key = `cf_duck_${i}`;
+      if (this.textures.exists(key) && !anims.exists(`${key}_idle`)) {
+        anims.create({
+          key: `${key}_idle`,
+          frames: anims.generateFrameNumbers(key, { start: 0, end: 1 }),
+          frameRate: 2.5, // ~400ms per frame
+          repeat: -1,
+        });
+      }
+    }
+    // Duck in a hat — same layout
+    if (this.textures.exists('cf_duck_hat') && !anims.exists('cf_duck_hat_idle')) {
+      anims.create({
+        key: 'cf_duck_hat_idle',
+        frames: anims.generateFrameNumbers('cf_duck_hat', { start: 0, end: 1 }),
+        frameRate: 2.5,
+        repeat: -1,
+      });
+    }
+    // Horse idle: row 0, first 2 frames
+    for (let i = 1; i <= 2; i++) {
+      const key = `cf_horse_${i}`;
+      if (this.textures.exists(key) && !anims.exists(`${key}_idle`)) {
+        anims.create({
+          key: `${key}_idle`,
+          frames: anims.generateFrameNumbers(key, { start: 0, end: 1 }),
+          frameRate: 1.5, // slow breathing
+          repeat: -1,
+        });
       }
     }
   }

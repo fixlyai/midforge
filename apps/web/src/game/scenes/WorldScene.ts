@@ -9,6 +9,7 @@ import {
   FIRSTGID_TOWN, FIRSTGID_DUNGEON,
   TIER_SPRITE_MAP, TIER_COLORS,
   NPC_SPRITE_NAMES, NPC_TYPE_EVENT,
+  CF_NPC_MAP, CF_NPC_VILLAGER_ALTS,
   ANIMATED_TILES, WANDERING_NPC,
   INTRO, TEXT_STYLES,
   getCharacterSpriteKey, TIER_PARTICLE_COLORS,
@@ -76,7 +77,9 @@ export class WorldScene extends Phaser.Scene {
   private lastSentY = 0;
 
   // NPCs
-  private npcSprites = new Map<string, Phaser.GameObjects.Image>();
+  private npcSprites = new Map<string, Phaser.GameObjects.Image | Phaser.GameObjects.Sprite>();
+  private npcShadows = new Map<string, Phaser.GameObjects.Ellipse>();
+  private cfVillagerIdx = 0; // alternates Farmer_Buba / Chef_Chloe for ambient NPCs
   private npcLabels = new Map<string, Phaser.GameObjects.Text>();
   private npcPromptLabel: Phaser.GameObjects.Text | null = null;
   private nearbyNpcId: string | null = null;
@@ -236,6 +239,7 @@ export class WorldScene extends Phaser.Scene {
     this.parseZones(mapData);
     this.initAnimatedTiles(mapData);
     this.initWanderingNpcs();
+    this.spawnVillageAnimals();
 
     // ── Player ──────────────────────────────────────────
     const isFirstLogin = playerData?.firstLogin !== false;
@@ -621,15 +625,49 @@ export class WorldScene extends Phaser.Scene {
       const tierRequired = getProp(obj, 'tierRequired') ?? '';
       const wandering = getProp(obj, 'wandering') ?? false;
 
-      const frame = NPC_SPRITE_NAMES[spriteName] ?? NPC_SPRITE_NAMES.villager;
       const px = obj.x + 8;
       const py = obj.y + 8;
-
       const isLocked = tierRequired.startsWith('locked_until_');
 
-      const sprite = this.add.image(px, py, dungeonKey, frame)
-        .setDepth(8)
-        .setVisible(!isLocked);
+      // Resolve Cute Fantasy texture key
+      let cfKey = CF_NPC_MAP[spriteName] ?? '';
+      // Tavern villager → Bartender_Bruno
+      if (spriteName === 'villager' && npcType === 'tavern') {
+        cfKey = 'cf_npc_Bartender_Bruno';
+      }
+      // Ambient villagers alternate between Farmer_Buba and Chef_Chloe
+      if (spriteName === 'villager' && npcType === 'ambient') {
+        cfKey = CF_NPC_VILLAGER_ALTS[this.cfVillagerIdx % CF_NPC_VILLAGER_ALTS.length];
+        this.cfVillagerIdx++;
+      }
+
+      const useCF = cfKey && this.textures.exists(cfKey);
+      let sprite: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
+
+      if (useCF) {
+        // Cute Fantasy animated NPC — 64×64 at 2x scale
+        const s = this.add.sprite(px, py, cfKey)
+          .setScale(2)
+          .setDepth(8)
+          .setVisible(!isLocked);
+        // Start idle breathing animation facing down
+        const idleKey = `${cfKey}_idle_down`;
+        if (this.anims.exists(idleKey)) s.play(idleKey);
+        sprite = s;
+
+        // Shadow under NPC
+        if (!isLocked) {
+          const shadow = this.add.ellipse(px, py + 12, 20, 5, 0x000000, 0.35)
+            .setDepth(7);
+          this.npcShadows.set(obj.name, shadow);
+        }
+      } else {
+        // Fallback: 16×16 Kenney dungeon tile
+        const frame = NPC_SPRITE_NAMES[spriteName] ?? NPC_SPRITE_NAMES.villager;
+        sprite = this.add.image(px, py, dungeonKey, frame)
+          .setDepth(8)
+          .setVisible(!isLocked);
+      }
 
       const eventName = NPC_TYPE_EVENT[npcType] ?? 'npc_ambient';
       sprite.setData('npcId', obj.name);
@@ -639,18 +677,21 @@ export class WorldScene extends Phaser.Scene {
       sprite.setData('npcType', npcType);
       sprite.setData('tierRequired', tierRequired);
       sprite.setData('wandering', wandering);
+      sprite.setData('cfKey', useCF ? cfKey : '');
 
       if (!isLocked) {
         this.npcSprites.set(obj.name, sprite);
 
-        const label = this.add.text(px, py - 14, obj.name, {
+        const labelY = useCF ? py - 24 : py - 14;
+        const label = this.add.text(px, labelY, obj.name, {
           ...TEXT_STYLES.npcName,
           color: '#F39C12',
         }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
         this.npcLabels.set(obj.name, label);
 
         // Zelda-style exclamation mark (hidden until player is near)
-        const excl = this.add.text(px, py - 28, '!', {
+        const exclY = useCF ? py - 38 : py - 28;
+        const excl = this.add.text(px, exclY, '!', {
           fontFamily: '"Press Start 2P"',
           fontSize: '14px',
           color: '#F39C12',
@@ -952,6 +993,57 @@ export class WorldScene extends Phaser.Scene {
         });
       });
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  VILLAGE ANIMALS — decorative ducks, horses, duck_in_a_hat
+  // ═══════════════════════════════════════════════════════════
+  private spawnVillageAnimals() {
+    // 3 ducks near the pond area (~960, 410)
+    const duckPositions = [
+      { x: 940, y: 420 }, { x: 970, y: 440 }, { x: 920, y: 450 },
+    ];
+    duckPositions.forEach((pos, i) => {
+      const key = `cf_duck_${(i % 4) + 1}`;
+      if (!this.textures.exists(key)) return;
+      const duck = this.add.sprite(pos.x, pos.y, key).setScale(2).setDepth(6);
+      if (this.anims.exists(`${key}_idle`)) duck.play(`${key}_idle`);
+      // Slow wander in small radius
+      this.duckWander(duck, pos.x, pos.y);
+    });
+
+    // Duck in a hat near the tavern (~780, 760)
+    if (this.textures.exists('cf_duck_hat')) {
+      const hatDuck = this.add.sprite(760, 760, 'cf_duck_hat').setScale(2).setDepth(6);
+      if (this.anims.exists('cf_duck_hat_idle')) hatDuck.play('cf_duck_hat_idle');
+      this.duckWander(hatDuck, 760, 760);
+    }
+
+    // 2 horses near village edge (south side, ~400, 900)
+    const horsePositions = [{ x: 380, y: 860 }, { x: 440, y: 870 }];
+    horsePositions.forEach((pos, i) => {
+      const key = `cf_horse_${(i % 2) + 1}`;
+      if (!this.textures.exists(key)) return;
+      const horse = this.add.sprite(pos.x, pos.y, key).setScale(2).setDepth(6);
+      if (this.anims.exists(`${key}_idle`)) horse.play(`${key}_idle`);
+      // Horses don't move — just idle
+    });
+  }
+
+  private duckWander(duck: Phaser.GameObjects.Sprite, originX: number, originY: number) {
+    const wander = () => {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 10 + Math.random() * 20;
+      const tx = originX + Math.cos(angle) * dist;
+      const ty = originY + Math.sin(angle) * dist;
+      const dur = 2000 + Math.random() * 3000;
+      this.tweens.add({
+        targets: duck, x: tx, y: ty, duration: dur, ease: 'Linear',
+        delay: 3000 + Math.random() * 5000,
+        onComplete: () => wander(),
+      });
+    };
+    this.time.delayedCall(Math.random() * 4000, () => wander());
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1436,16 +1528,30 @@ export class WorldScene extends Phaser.Scene {
         closestId = npcId;
       }
 
+      // Cute Fantasy NPC face-toward-player when within 48px
+      const cfKey = sprite.getData('cfKey') as string;
+      if (cfKey && dist < 48 && sprite instanceof Phaser.GameObjects.Sprite) {
+        const adx = Math.abs(dx);
+        const ady = Math.abs(dy);
+        let faceDir = 'down';
+        if (adx > ady) faceDir = dx > 0 ? 'right' : 'left';
+        else faceDir = dy > 0 ? 'down' : 'up';
+        const faceKey = `${cfKey}_idle_${faceDir}`;
+        if (this.anims.exists(faceKey)) sprite.play(faceKey, true);
+      }
+
       // FIX 4: Zelda exclamation mark — show/hide + bounce
       const excl = this.npcExclamations.get(npcId);
+      const exclOffset = cfKey ? -38 : -28;
+      const bounceTarget = cfKey ? sprite.y - 46 : sprite.y - 36;
       if (excl) {
         const inRange = dist < NPC_INTERACT_DISTANCE;
         if (inRange && !excl.visible) {
           excl.setVisible(true);
-          excl.setPosition(sprite.x, sprite.y - 28);
+          excl.setPosition(sprite.x, sprite.y + exclOffset);
           this.tweens.add({
             targets: excl,
-            y: sprite.y - 36,
+            y: bounceTarget,
             duration: 400,
             yoyo: true,
             repeat: -1,

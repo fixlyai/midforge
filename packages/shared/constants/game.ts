@@ -277,6 +277,19 @@ export const NPC_SPRITE_NAMES: Record<string, number> = {
   villager: DUNGEON_TILES.charPeasant,     // 85  — brown peasant
 };
 
+// ── Cute Fantasy NPC mapping — TMJ sprite name → cf_npc_{key} texture ──
+// For npcType=tavern villager use Bartender_Bruno; ambients alternate Farmer_Buba / Chef_Chloe
+export const CF_NPC_MAP: Record<string, string> = {
+  elder:    'cf_npc_Lumberjack_Jack',
+  guard:    'cf_npc_Miner_Mike',
+  warrior:  'cf_npc_Farmer_Bob',
+  merchant: 'cf_npc_Bartender_Katy',
+  villager: 'cf_npc_Farmer_Buba', // default; tavern overridden to Bartender_Bruno at runtime
+};
+
+// Alternating villager sprites for ambient NPCs
+export const CF_NPC_VILLAGER_ALTS = ['cf_npc_Farmer_Buba', 'cf_npc_Chef_Chloe'] as const;
+
 // ── NPC type → game event mapping (.tmj npcType → event name) ─
 export const NPC_TYPE_EVENT: Record<string, string> = {
   intro: 'npc_intro',
