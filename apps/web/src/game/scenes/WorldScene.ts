@@ -381,6 +381,16 @@ export class WorldScene extends Phaser.Scene {
     this.initShootingStar();
 
     this.connectMultiplayer(playerData);
+
+    // ── Dungeon exit handler — resume WorldScene when DungeonScene exits ──
+    this.game.events.on('dungeon_exit', () => {
+      this.scene.resume('WorldScene');
+      this.cameras.main.fadeIn(400, 0, 0, 0);
+      this.inputEnabled = true;
+      // Resume village music
+      if (this.musicManager) this.musicManager.playZoneMusic('village');
+    });
+
     this.game.events.emit('world_ready');
   }
 
@@ -1255,6 +1265,20 @@ export class WorldScene extends Phaser.Scene {
         new Phaser.Geom.Rectangle(zBody.x, zBody.y, zBody.width, zBody.height)
       )) {
         this.lastTransitionTime = now;
+
+        // Dungeon entrance — launch DungeonScene
+        if (targetMap === 'dungeon_interior') {
+          this.inputEnabled = false;
+          this.cameras.main.fadeOut(400, 0, 0, 0);
+          this.cameras.main.once('camerafadeoutcomplete', () => {
+            this.scene.pause('WorldScene');
+            this.scene.launch('DungeonScene');
+            // Music crossfade to cave
+            if (this.musicManager) this.musicManager.playZoneMusic('cave');
+          });
+          return;
+        }
+
         const displayName = targetMap.replace(/_/g, ' ');
 
         // Show typewriter dialogue instead of just flashing

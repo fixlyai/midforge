@@ -182,11 +182,47 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 32, frameHeight: 32,
     });
 
+    // ── Dungeon assets ──
+    this.load.image('dg1_tileset', '/assets/dungeons/Dungeon_1/Dungeon_1.png');
+    this.load.image('dg1_pillars', '/assets/dungeons/Dungeon_1/Dungeon_1_Pillars.png');
+    this.load.image('dg1_stairs', '/assets/dungeons/Dungeon_1/Dungeon_1_Stairs.png');
+    this.load.image('dg1_stairs_down', '/assets/dungeons/Dungeon_1/Dungeon_1_Stairs_Down.png');
+    this.load.image('dg1_arch', '/assets/dungeons/Dungeon_1/Dungeon_1_Arch.png');
+    this.load.image('dg1_arch_open', '/assets/dungeons/Dungeon_1/Dungeon_1_Arch_Open.png');
+    this.load.image('dg1_door_closed', '/assets/dungeons/Dungeon_1/Dungeon_1_Door_Closed.png');
+    this.load.image('dg1_door_open', '/assets/dungeons/Dungeon_1/Dungeon_1_Door_Open.png');
+    this.load.image('dg1_gate_closed', '/assets/dungeons/Dungeon_1/Dungeon_1_Gate_Closed.png');
+    this.load.image('dg1_gate_open', '/assets/dungeons/Dungeon_1/Dungeon_1_Gate_Open.png');
+    this.load.image('dg1_sewer', '/assets/dungeons/Dungeon_1/Dungeon_1_Sewer.png');
+    this.load.image('dg1_pressure_plate', '/assets/dungeons/Dungeon_1/Dungeon_1_Pressure_Plate.png');
+    this.load.image('dg1_spikes', '/assets/dungeons/Dungeon_1/Floor_spikes_1.png');
+    // Animated dungeon sprites
+    this.load.spritesheet('dg1_door_anim', '/assets/dungeons/Dungeon_1/Dungeon_1_Door_anim.png', {
+      frameWidth: 32, frameHeight: 32,
+    });
+    this.load.spritesheet('dg1_gate_anim', '/assets/dungeons/Dungeon_1/Dungeon_1_Gate_anim.png', {
+      frameWidth: 32, frameHeight: 32,
+    });
+    this.load.spritesheet('dg1_sewer_anim', '/assets/dungeons/Dungeon_1/Dungeon_1_Sewer_Anim.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+    this.load.spritesheet('dg1_plate_anim', '/assets/dungeons/Dungeon_1/Dungeon_1_Pressure_Plate_Anim.png', {
+      frameWidth: 16, frameHeight: 32,
+    });
+    // Dungeon objects
+    this.load.image('dg_objects', '/assets/dungeons/Objects/Dungeon_Objects.png');
+    this.load.image('dg_gold', '/assets/dungeons/Objects/Gold_Piles.png');
+    this.load.image('dg_grills', '/assets/dungeons/Objects/Metal_Grills.png');
+    this.load.spritesheet('dg_chest_anim', '/assets/dungeons/Objects/Chest_anim.png', {
+      frameWidth: 32, frameHeight: 32,
+    });
+
     // Suppress errors for missing sprite files (assets may not exist yet)
     this.load.on('loaderror', (file: any) => {
       if (file?.key && (file.key.includes('_base') || file.key.includes('_upgraded') ||
           file.key.includes('_ascended') || file.key.startsWith('npc_') || file.key.startsWith('cf_')
-          || file.key.startsWith('mc_') || file.key.startsWith('music_'))) {
+          || file.key.startsWith('mc_') || file.key.startsWith('music_')
+          || file.key.startsWith('dg'))) {
         // Silently ignore — sprite/music file not found
       }
     });
@@ -430,6 +466,44 @@ export class PreloadScene extends Phaser.Scene {
         frames: anims.generateFrameNumbers('mc_campfire_pot', { start: 0, end: 6 }),
         frameRate: 7,
         repeat: -1,
+      });
+    }
+
+    // ── Dungeon animations ──
+    // Door: 32×32, 5 frames (160/32)
+    if (this.textures.exists('dg1_door_anim') && !anims.exists('dg1_door_anim_play')) {
+      anims.create({
+        key: 'dg1_door_anim_play',
+        frames: anims.generateFrameNumbers('dg1_door_anim', { start: 0, end: 4 }),
+        frameRate: 7,
+        repeat: -1,
+      });
+    }
+    // Gate: 32×32, 26 frames (832/32)
+    if (this.textures.exists('dg1_gate_anim') && !anims.exists('dg1_gate_anim_play')) {
+      anims.create({
+        key: 'dg1_gate_anim_play',
+        frames: anims.generateFrameNumbers('dg1_gate_anim', { start: 0, end: 25 }),
+        frameRate: 7,
+        repeat: -1,
+      });
+    }
+    // Sewer: 16×16, 14 frames (224/16)
+    if (this.textures.exists('dg1_sewer_anim') && !anims.exists('dg1_sewer_anim_play')) {
+      anims.create({
+        key: 'dg1_sewer_anim_play',
+        frames: anims.generateFrameNumbers('dg1_sewer_anim', { start: 0, end: 13 }),
+        frameRate: 5,
+        repeat: -1,
+      });
+    }
+    // Chest: 32×32, 8 frames (256/32)
+    if (this.textures.exists('dg_chest_anim') && !anims.exists('dg_chest_anim_play')) {
+      anims.create({
+        key: 'dg_chest_anim_play',
+        frames: anims.generateFrameNumbers('dg_chest_anim', { start: 0, end: 7 }),
+        frameRate: 6,
+        repeat: 0,
       });
     }
   }

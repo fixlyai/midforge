@@ -101,6 +101,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
       const { PreloadScene } = await import('@/game/scenes/PreloadScene');
       const { WorldScene } = await import('@/game/scenes/WorldScene');
       const { UIScene } = await import('@/game/scenes/UIScene');
+      const { default: DungeonScene } = await import('@/game/scenes/DungeonScene');
 
       if (gameRef.current) return;
 
@@ -126,7 +127,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
           default: 'arcade',
           arcade: { gravity: { x: 0, y: 0 }, debug: false },
         },
-        scene: [PreloadScene, WorldScene, UIScene],
+        scene: [PreloadScene, WorldScene, UIScene, DungeonScene],
         scale: {
           mode: mobile ? Phaser.Scale.RESIZE : Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
