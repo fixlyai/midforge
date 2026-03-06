@@ -1,3 +1,52 @@
+// ═══════════════════════════════════════════════════════════════════════════
+//  MIDFORGE DESIGN SYSTEM — THE LAWS
+//  Every visual decision in this file references these rules.
+//  Do not deviate. Do not add exceptions.
+// ═══════════════════════════════════════════════════════════════════════════
+//
+//  SCALE HIERARCHY:
+//    Player (local):      3x sprite scale
+//    Other players:       2.5x sprite scale
+//    NPCs:                2x sprite scale
+//    Animals:             1.5x sprite scale
+//    Small decorations:   1x sprite scale
+//    Trees/buildings:     fixed pixel size per asset
+//
+//  DEPTH LAYER ORDER (back to front):
+//    Layer 0: Sky/background (clouds, parallax)
+//    Layer 1: Ground tiles (grass, paths, water)
+//    Layer 2: Ground decorations (flowers, rocks)
+//    Layer 3: Building bases + tree trunks (collidable)
+//    Layer 4: Characters + NPCs (Y-sorted within layer)
+//    Layer 5: Building rooftops + tree canopies (above chars)
+//    Layer 6: Particles + effects
+//    Layer 7: UI overlays (HP bar, name labels)
+//    Layer 8: React UI (joystick, buttons, panels)
+//
+//  WALKABILITY RULE:
+//    A tile is walkable if and only if it is:
+//      - Grass tile OR dirt/path tile OR stone path tile
+//    A tile is NOT walkable if it is:
+//      - Building footprint tile
+//      - Water tile
+//      - Mountain/cliff tile
+//    No other exceptions. Ever.
+//
+//  COLOR ZONES:
+//    Village center: warm tones (golds, browns, greens)
+//    Forest:         cool greens, deep shadows
+//    Arena area:     red/orange accents
+//    Water areas:    blues, teals
+//    Castle zone:    grey stone, purple accents
+//
+//  SPACING RULE:
+//    Minimum 4 tile gap between any two buildings
+//    Minimum 3 tile wide path on all main routes
+//    Minimum 2 tile yard around every building entrance
+//    Central plaza: minimum 8×8 open tiles
+//
+// ═══════════════════════════════════════════════════════════════════════════
+
 // @ts-ignore — Phaser exports default from ESM build
 import Phaser from 'phaser';
 import {
@@ -60,6 +109,7 @@ export class WorldScene extends Phaser.Scene {
   private useNewSprites = false;    // true if 48×48 assets loaded successfully
   private useCuteFantasy = false;   // true if Cute Fantasy player spritesheet loaded
   private playerShadow!: Phaser.GameObjects.Ellipse;
+  private playerGlow!: Phaser.GameObjects.Ellipse;
   private cloudLayer: Phaser.GameObjects.TileSprite | null = null;
   private nameLabel!: Phaser.GameObjects.Text;
   private inputEnabled = false;
@@ -260,13 +310,13 @@ export class WorldScene extends Phaser.Scene {
     this.useNewSprites = this.textures.exists(this.spriteKey);
 
     if (this.useCuteFantasy) {
-      // Cute Fantasy player — 64×64 frames rendered at 2× scale
+      // Cute Fantasy player — 64×64 frames rendered at 3× scale (Design System: player = 3x)
       this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, 'cf_player');
-      this.player.setScale(2);
+      this.player.setScale(3);
       this.player.setDepth(PLAYER_DEPTH);
       const pBody = this.player.body as Phaser.Physics.Arcade.Body;
-      pBody.setSize(16, 10);       // tight feet-level hitbox (pre-scale coords)
-      pBody.setOffset(24, 50);
+      pBody.setSize(12, 8);        // tight feet-level hitbox (pre-scale coords)
+      pBody.setOffset(26, 52);
       this.player.play('cf_player_idle_down');
     } else if (this.useNewSprites) {
       this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, this.spriteKey);
@@ -286,9 +336,13 @@ export class WorldScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(true);
     this.physics.add.collider(this.player, this.walls);
 
-    // Shadow ellipse under player feet
-    this.playerShadow = this.add.ellipse(spawnPos.x, spawnPos.y + 12, 20, 5, 0x000000, 0.35)
+    // Shadow ellipse under player feet (Design System: 40% opacity)
+    this.playerShadow = this.add.ellipse(spawnPos.x, spawnPos.y + 18, 28, 7, 0x000000, 0.40)
       .setDepth(PLAYER_DEPTH - 1);
+
+    // Gold position indicator glow beneath player (Phase 4: visual gravity)
+    this.playerGlow = this.add.ellipse(spawnPos.x, spawnPos.y + 18, 40, 12, 0xFFB800, 0.35)
+      .setDepth(PLAYER_DEPTH - 2);
 
     // ── Camera ──────────────────────────────────────────
     this.cameras.main.startFollow(this.player, true, CAMERA_LERP, CAMERA_LERP);
@@ -1389,7 +1443,7 @@ export class WorldScene extends Phaser.Scene {
     duckPositions.forEach((pos, i) => {
       const key = `cf_duck_${(i % 4) + 1}`;
       if (!this.textures.exists(key)) return;
-      const duck = this.add.sprite(pos.x, pos.y, key).setScale(2).setDepth(6);
+      const duck = this.add.sprite(pos.x, pos.y, key).setScale(1.5).setDepth(6);
       if (this.anims.exists(`${key}_idle`)) duck.play(`${key}_idle`);
       // Slow wander in small radius
       this.duckWander(duck, pos.x, pos.y);
@@ -1397,7 +1451,7 @@ export class WorldScene extends Phaser.Scene {
 
     // Duck in a hat near the tavern (~780, 760)
     if (this.textures.exists('cf_duck_hat')) {
-      const hatDuck = this.add.sprite(760, 760, 'cf_duck_hat').setScale(2).setDepth(6);
+      const hatDuck = this.add.sprite(760, 760, 'cf_duck_hat').setScale(1.5).setDepth(6);
       if (this.anims.exists('cf_duck_hat_idle')) hatDuck.play('cf_duck_hat_idle');
       this.duckWander(hatDuck, 760, 760);
     }
@@ -1407,7 +1461,7 @@ export class WorldScene extends Phaser.Scene {
     horsePositions.forEach((pos, i) => {
       const key = `cf_horse_${(i % 2) + 1}`;
       if (!this.textures.exists(key)) return;
-      const horse = this.add.sprite(pos.x, pos.y, key).setScale(2).setDepth(6);
+      const horse = this.add.sprite(pos.x, pos.y, key).setScale(1.5).setDepth(6);
       if (this.anims.exists(`${key}_idle`)) horse.play(`${key}_idle`);
       // Horses don't move — just idle
     });
@@ -1883,11 +1937,14 @@ export class WorldScene extends Phaser.Scene {
       this.footstepCounter = 0;
     }
 
-    // Update shadow + name label position
+    // Update shadow + glow + name label position
     if (this.playerShadow) {
-      this.playerShadow.setPosition(this.player.x, this.player.y + 12);
+      this.playerShadow.setPosition(this.player.x, this.player.y + 18);
     }
-    this.nameLabel.setPosition(this.player.x, this.player.y - (this.useCuteFantasy ? 24 : 12));
+    if (this.playerGlow) {
+      this.playerGlow.setPosition(this.player.x, this.player.y + 18);
+    }
+    this.nameLabel.setPosition(this.player.x, this.player.y - (this.useCuteFantasy ? 36 : 12));
 
     this.sendTimer += delta;
     if (this.colyseusRoom && this.sendTimer > 66) {
@@ -1943,23 +2000,26 @@ export class WorldScene extends Phaser.Scene {
         if (this.anims.exists(faceKey)) sprite.play(faceKey, true);
       }
 
-      // FIX 4: Zelda exclamation mark — show/hide + bounce
+      // Design System: pulsing "!" above NPC — scale 1→1.2→1 on 800ms loop
       const excl = this.npcExclamations.get(npcId);
-      const exclOffset = cfKey ? -38 : -28;
-      const bounceTarget = cfKey ? sprite.y - 46 : sprite.y - 36;
+      const exclOffset = cfKey ? -42 : -28;
       if (excl) {
         const inRange = dist < NPC_INTERACT_DISTANCE;
         if (inRange && !excl.visible) {
           excl.setVisible(true);
           excl.setPosition(sprite.x, sprite.y + exclOffset);
+          excl.setScale(1);
           this.tweens.add({
             targets: excl,
-            y: bounceTarget,
+            scaleX: 1.2,
+            scaleY: 1.2,
             duration: 400,
             yoyo: true,
             repeat: -1,
             ease: 'Sine.easeInOut',
           });
+        } else if (inRange && excl.visible) {
+          excl.setPosition(sprite.x, sprite.y + exclOffset);
         } else if (!inRange && excl.visible) {
           excl.setVisible(false);
           this.tweens.killTweensOf(excl);
