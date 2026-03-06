@@ -56,6 +56,8 @@ export class WorldScene extends Phaser.Scene {
   private playerTier = 'villager';
   private spriteKey = '';           // resolved 48×48 sprite key (e.g. 'villager_base')
   private useNewSprites = false;    // true if 48×48 assets loaded successfully
+  private useCuteFantasy = false;   // true if Cute Fantasy player spritesheet loaded
+  private playerShadow!: Phaser.GameObjects.Ellipse;
   private nameLabel!: Phaser.GameObjects.Text;
   private inputEnabled = false;
 
@@ -239,11 +241,21 @@ export class WorldScene extends Phaser.Scene {
     const isFirstLogin = playerData?.firstLogin !== false;
     const spawnPos = isFirstLogin ? this.spawnNewGame : this.spawnDefault;
 
-    // Resolve 64×64 LPC sprite key; fall back to 16×16 Kenney if not loaded
+    // Resolve sprite: prefer Cute Fantasy → LPC 64×64 → 16×16 Kenney fallback
+    this.useCuteFantasy = this.textures.exists('cf_player');
     this.spriteKey = getCharacterSpriteKey(this.playerTier, playerData?.xp ?? 0);
     this.useNewSprites = this.textures.exists(this.spriteKey);
 
-    if (this.useNewSprites) {
+    if (this.useCuteFantasy) {
+      // Cute Fantasy player — 64×64 frames rendered at 2× scale
+      this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, 'cf_player');
+      this.player.setScale(2);
+      this.player.setDepth(PLAYER_DEPTH);
+      const pBody = this.player.body as Phaser.Physics.Arcade.Body;
+      pBody.setSize(16, 10);       // tight feet-level hitbox (pre-scale coords)
+      pBody.setOffset(24, 50);
+      this.player.play('cf_player_idle_down');
+    } else if (this.useNewSprites) {
       this.player = this.physics.add.sprite(spawnPos.x, spawnPos.y, this.spriteKey);
       this.player.setDepth(PLAYER_DEPTH);
       const pBody = this.player.body as Phaser.Physics.Arcade.Body;
@@ -260,6 +272,10 @@ export class WorldScene extends Phaser.Scene {
     }
     this.player.setCollideWorldBounds(true);
     this.physics.add.collider(this.player, this.walls);
+
+    // Shadow ellipse under player feet
+    this.playerShadow = this.add.ellipse(spawnPos.x, spawnPos.y + 12, 20, 5, 0x000000, 0.35)
+      .setDepth(PLAYER_DEPTH - 1);
 
     // ── Camera ──────────────────────────────────────────
     this.cameras.main.startFollow(this.player, true, CAMERA_LERP, CAMERA_LERP);
@@ -1351,8 +1367,15 @@ export class WorldScene extends Phaser.Scene {
       this.stuckFrames = 0;
     }
 
-    // Play walk/idle animations when 48×48 sprites are active
-    if (this.useNewSprites) {
+    // Play walk/idle animations
+    if (this.useCuteFantasy) {
+      if (moving) {
+        this.player.play(`cf_player_walk_${direction}`, true);
+      } else {
+        // Idle in last walked direction — don't snap to face-down
+        this.player.play(`cf_player_idle_${this.lastDirection}`, true);
+      }
+    } else if (this.useNewSprites) {
       if (moving) {
         this.player.play(`${this.spriteKey}_walk_${direction}`, true);
       } else {
@@ -1371,7 +1394,11 @@ export class WorldScene extends Phaser.Scene {
       this.footstepCounter = 0;
     }
 
-    this.nameLabel.setPosition(this.player.x, this.player.y - 12);
+    // Update shadow + name label position
+    if (this.playerShadow) {
+      this.playerShadow.setPosition(this.player.x, this.player.y + 12);
+    }
+    this.nameLabel.setPosition(this.player.x, this.player.y - (this.useCuteFantasy ? 24 : 12));
 
     this.sendTimer += delta;
     if (this.colyseusRoom && this.sendTimer > 66) {
