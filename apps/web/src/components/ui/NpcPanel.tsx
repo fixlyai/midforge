@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import BiomeBackground from './BiomeBackground';
 import type { BiomeKey } from './BiomeBackground';
-import BattleSprite from './BattleSprite';
+import BattleSprite, { BRIGAND_ENEMY_MAP } from './BattleSprite';
 
 // ─── Quest Panel ───
 interface QuestDef {
@@ -362,10 +362,12 @@ const BIOME_LIST: BiomeKey[] = ['town', 'forest', 'cave', 'castle', 'mountain', 
 type CombatAction = 'strike' | 'powerStrike' | 'block';
 
 function ArenaFightScene({
-  result, playerName, playerTier = 'villager', onDone, biome = 'town',
+  result, playerName, playerTier = 'villager', onDone, biome = 'town', brigandName,
 }: {
-  result: GhostFightResult; playerName: string; playerTier?: string; onDone: () => void; biome?: BiomeKey;
+  result: GhostFightResult; playerName: string; playerTier?: string; onDone: () => void; biome?: BiomeKey; brigandName?: string;
 }) {
+  // Resolve enemy sprite type from brigand name or tier
+  const enemyType = brigandName ? (BRIGAND_ENEMY_MAP[brigandName] ?? undefined) : undefined;
   const log = result.fightLog;
   const maxHp = log.length > 0 ? Math.round(log[0].cHp + log[0].cDmg * 2) : 100;
 
@@ -579,7 +581,7 @@ function ArenaFightScene({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', minHeight: 100, padding: '4px 12px', position: 'relative' }}>
             {/* Player */}
             <div style={{ position: 'relative', animation: playerEntered ? (hitLeft ? 'attackLunge 0.4s ease-in-out' : shakeLeft ? 'shakeX 0.4s ease-in-out' : 'none') : 'slideInLeft 0.4s ease-out forwards' }}>
-              <BattleSprite tier={playerTier} hit={hitLeft} dead={isDead(cHp)} />
+              <BattleSprite tier={playerTier} isPlayer hit={hitLeft} dead={isDead(cHp)} />
               {dmgLeft !== null && <DamageNumber damage={dmgLeft} x="left" critical={lastAction === 'block'} />}
               {lastAction === 'block' && !canAttack && (
                 <div style={{ position: 'absolute', inset: -4, border: '2px solid #4A90D9', borderRadius: 8, animation: 'blockShimmer 0.6s infinite', pointerEvents: 'none' }} />
@@ -596,7 +598,7 @@ function ArenaFightScene({
 
             {/* Ghost */}
             <div style={{ position: 'relative', animation: ghostEntered ? (hitRight ? 'attackLungeR 0.4s ease-in-out' : shakeRight ? 'shakeX 0.4s ease-in-out' : 'none') : 'slideInRight 0.4s ease-out forwards' }}>
-              <BattleSprite tier={result.ghost.tier} flipped hit={hitRight} dead={isDead(dHp)} tintColor={ghostColor} />
+              <BattleSprite tier={result.ghost.tier} enemyType={enemyType} flipped hit={hitRight} dead={isDead(dHp)} tintColor={ghostColor} />
               {dmgRight !== null && <DamageNumber damage={dmgRight} x="right" critical={lastAction === 'powerStrike'} />}
               {ghostAction === 'block' && (
                 <div style={{ position: 'absolute', inset: -4, border: '2px solid #4A90D9', borderRadius: 8, animation: 'blockShimmer 0.6s infinite', pointerEvents: 'none' }} />
@@ -782,6 +784,7 @@ export function ArenaPanel({ onClose, brigandData }: { onClose: () => void; brig
           playerName="You"
           playerTier={playerTier}
           biome={fightBiome}
+          brigandName={brigandData?.brigandName}
           onDone={() => {
             if (isBrigand) {
               onClose();
