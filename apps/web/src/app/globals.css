@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -9,6 +9,32 @@
   --sab: env(safe-area-inset-bottom);
   --sal: env(safe-area-inset-left);
   --sar: env(safe-area-inset-right);
+
+  /* ═══ MIDFORGE DESIGN SYSTEM ═══ */
+  --bg-deepest:    #0A0812;
+  --bg-deep:       #120F1E;
+  --bg-mid:        #1E1830;
+  --bg-surface:    #2A2240;
+
+  --gold-primary:  #FFB800;
+  --gold-dim:      #C8860A;
+  --gold-glow:     #FFD700;
+
+  --green-victory: #2ECC71;
+  --red-danger:    #E74C3C;
+  --blue-action:   #3498DB;
+  --purple-accent: #8E44AD;
+
+  --text-primary:  #F0E6D3;
+  --text-dim:      #8A7A6A;
+  --text-pixel:    #FFB800;
+
+  --pixel-font: 'Press Start 2P', monospace;
+  --body-font:  'Crimson Pro', serif;
+
+  --pixel-border: 2px solid var(--gold-dim);
+  --glow-gold: 0 0 20px rgba(255, 184, 0, 0.4);
+  --glow-soft: 0 0 40px rgba(255, 184, 0, 0.15);
 }
 
 @layer base {

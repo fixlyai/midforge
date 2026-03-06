@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 
-const TIER_META: Record<string, { emoji: string; color: string }> = {
-  villager: { emoji: '🧑‍🌾', color: '#8B7355' },
-  apprentice: { emoji: '⚒️', color: '#4A90D9' },
-  merchant: { emoji: '💰', color: '#7B68EE' },
-  warrior: { emoji: '⚔️', color: '#E74C3C' },
-  legend: { emoji: '👑', color: '#F39C12' },
+const TIER_META: Record<string, { color: string }> = {
+  villager:   { color: '#888888' },
+  apprentice: { color: '#3498DB' },
+  merchant:   { color: '#8E44AD' },
+  warrior:    { color: '#E74C3C' },
+  legend:     { color: '#FFB800' },
 };
 
 interface LeaderboardPlayer {
@@ -34,6 +34,9 @@ function formatFollowers(n: number) {
 // Season 0 end: 90 days from 2025-03-01
 const SEASON_END = new Date('2025-06-01T00:00:00Z');
 
+const pf = (s: React.CSSProperties): React.CSSProperties => ({ fontFamily: 'var(--pixel-font)', ...s });
+const bf = (s: React.CSSProperties): React.CSSProperties => ({ fontFamily: 'var(--body-font)', ...s });
+
 export function Leaderboard() {
   const [players, setPlayers] = useState<LeaderboardPlayer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,19 +56,21 @@ export function Leaderboard() {
       .catch(() => setLoading(false));
   }, []);
 
-  // Fill to 5 slots
   const rows: (LeaderboardPlayer | null)[] = [...players];
   while (rows.length < 5) rows.push(null);
 
   return (
     <div className="w-full">
-      <p className="font-pixel text-[8px] sm:text-[9px] text-center text-forge-amber/60 mb-6">
+      <p style={pf({ fontSize: '9px', color: 'var(--text-dim)', textAlign: 'center', marginBottom: 24 })}>
         SEASON 0 — {daysRemaining > 0 ? `${daysRemaining} days remaining` : 'Season ended'}
       </p>
 
-      <div className="forge-panel overflow-hidden">
+      <div style={{ background: 'var(--bg-mid)', border: 'var(--pixel-border)', overflow: 'hidden' }}>
         {/* Header */}
-        <div className="grid grid-cols-[30px_1fr_70px_60px_50px] sm:grid-cols-[40px_1fr_90px_80px_70px] gap-1 sm:gap-2 font-pixel text-[6px] sm:text-[8px] text-forge-wheat/40 px-2 sm:px-3 py-2 border-b border-forge-amber/20">
+        <div
+          className="grid grid-cols-[30px_1fr_70px_60px_50px] sm:grid-cols-[40px_1fr_90px_80px_70px] gap-1 sm:gap-2 px-2 sm:px-3 py-2"
+          style={{ borderBottom: '1px solid var(--gold-dim)', ...pf({ fontSize: '7px', color: 'var(--gold-primary)' }) }}
+        >
           <span>#</span>
           <span>PLAYER</span>
           <span className="text-right">MRR</span>
@@ -75,7 +80,7 @@ export function Leaderboard() {
 
         {loading ? (
           <div className="px-3 py-4">
-            <p className="font-pixel text-[8px] text-forge-wheat/40 animate-pulse text-center">
+            <p style={pf({ fontSize: '8px', color: 'var(--text-dim)', textAlign: 'center' })}>
               Loading leaderboard...
             </p>
           </div>
@@ -88,62 +93,50 @@ export function Leaderboard() {
             return (
               <div
                 key={i}
-                className={`grid grid-cols-[30px_1fr_70px_60px_50px] sm:grid-cols-[40px_1fr_90px_80px_70px] gap-1 sm:gap-2 items-center px-2 sm:px-3 py-2 sm:py-3 border-b border-forge-dark/50 last:border-0 ${
-                  isFirst ? 'bg-forge-amber/5' : ''
-                }`}
+                className="grid grid-cols-[30px_1fr_70px_60px_50px] sm:grid-cols-[40px_1fr_90px_80px_70px] gap-1 sm:gap-2 items-center px-2 sm:px-3 py-2 sm:py-3"
+                style={{
+                  borderBottom: '1px solid rgba(30,24,48,0.8)',
+                  background: isFirst ? 'rgba(255,184,0,0.08)' : 'transparent',
+                }}
               >
-                <span
-                  className="font-pixel text-[8px] sm:text-xs"
-                  style={{ color: rank <= 3 ? '#F39C12' : 'rgba(245,222,179,0.4)' }}
-                >
+                <span style={pf({ fontSize: '10px', color: rank <= 3 ? 'var(--gold-primary)' : 'var(--text-dim)' })}>
                   {isFirst ? '👑' : rank}
                 </span>
 
                 {p ? (
                   <>
                     <div className="flex items-center gap-1 sm:gap-2 min-w-0">
-                      <span className="text-xs sm:text-sm flex-shrink-0">{tier.emoji}</span>
                       <div className="min-w-0">
-                        <span
-                          className="font-pixel text-[7px] sm:text-[9px] block truncate"
-                          style={{ color: tier.color }}
-                        >
+                        <span style={pf({ fontSize: '8px', color: isFirst ? 'var(--gold-primary)' : tier.color, display: 'block' })} className="truncate">
                           @{p.xUsername}
                         </span>
                       </div>
                     </div>
-                    <span className="font-pixel text-[7px] sm:text-[9px] text-forge-green text-right truncate">
+                    <span style={bf({ fontSize: '13px', color: 'var(--green-victory)', textAlign: 'right' })} className="truncate">
                       {formatMrr(p.mrr ?? 0)}
                     </span>
-                    <span className="font-pixel text-[7px] sm:text-[9px] text-forge-blue text-right truncate">
+                    <span style={bf({ fontSize: '13px', color: 'var(--blue-action)', textAlign: 'right' })} className="truncate">
                       {formatFollowers(p.xFollowers ?? 0)}
                     </span>
-                    <span className="font-pixel text-[7px] sm:text-[9px] text-forge-wheat/60 text-right">
+                    <span style={bf({ fontSize: '13px', color: 'var(--text-dim)', textAlign: 'right' })}>
                       {(p.xp ?? 0).toLocaleString()}
                     </span>
                   </>
                 ) : (
                   <>
                     <div className="flex items-center gap-1 sm:gap-2 min-w-0">
-                      <span className="text-xs sm:text-sm flex-shrink-0 opacity-30">?</span>
                       <div className="min-w-0">
-                        <span className="font-pixel text-[7px] sm:text-[9px] text-forge-wheat/20 block">
+                        <span style={pf({ fontSize: '8px', color: 'var(--text-dim)', opacity: 0.3, display: 'block' })}>
                           ???
                         </span>
-                        <span className="font-pixel text-[6px] text-forge-wheat/15">
+                        <span style={pf({ fontSize: '6px', color: 'var(--text-dim)', opacity: 0.2 })}>
                           Unclaimed
                         </span>
                       </div>
                     </div>
-                    <span className="font-pixel text-[7px] sm:text-[9px] text-forge-wheat/15 text-right">
-                      —
-                    </span>
-                    <span className="font-pixel text-[7px] sm:text-[9px] text-forge-wheat/15 text-right">
-                      —
-                    </span>
-                    <span className="font-pixel text-[7px] sm:text-[9px] text-forge-wheat/15 text-right">
-                      —
-                    </span>
+                    <span style={bf({ fontSize: '13px', color: 'var(--text-dim)', opacity: 0.2, textAlign: 'right' })}>—</span>
+                    <span style={bf({ fontSize: '13px', color: 'var(--text-dim)', opacity: 0.2, textAlign: 'right' })}>—</span>
+                    <span style={bf({ fontSize: '13px', color: 'var(--text-dim)', opacity: 0.2, textAlign: 'right' })}>—</span>
                   </>
                 )}
               </div>

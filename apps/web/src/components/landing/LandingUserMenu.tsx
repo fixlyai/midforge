@@ -16,29 +16,39 @@ export function LandingUserMenu({ username }: { username: string }) {
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50">
+    <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="forge-panel px-3 py-2 flex items-center gap-2 cursor-pointer hover:border-forge-amber/60 transition-colors"
+        style={{
+          fontFamily: 'var(--pixel-font)', fontSize: '8px', color: 'var(--gold-primary)',
+          border: 'var(--pixel-border)', background: 'rgba(10,8,18,0.9)',
+          padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+        }}
       >
-        <span className="font-pixel text-[8px] text-forge-amber">@{username}</span>
-        <span className="font-pixel text-[8px] text-forge-wheat/40">
-          {open ? '▴' : '▾'}
-        </span>
+        @{username}
+        <span style={{ color: 'var(--text-dim)' }}>{open ? '▴' : '▾'}</span>
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 mt-1 w-44">
-          <div className="forge-panel p-0 overflow-hidden">
+        <div className="absolute top-full right-0 mt-1 w-44" style={{ zIndex: 60 }}>
+          <div style={{ background: 'var(--bg-mid)', border: 'var(--pixel-border)', overflow: 'hidden' }}>
             <Link
               href="/world"
-              className="block px-4 py-3 font-pixel text-[8px] text-forge-amber hover:bg-forge-amber/10 transition-colors border-b border-forge-dark/50"
+              style={{
+                display: 'block', padding: '10px 16px', textDecoration: 'none',
+                fontFamily: 'var(--pixel-font)', fontSize: '8px', color: 'var(--gold-primary)',
+                borderBottom: '1px solid var(--bg-surface)',
+              }}
             >
               Enter Game →
             </Link>
             <button
               onClick={handleLogout}
-              className="block w-full text-left px-4 py-3 font-pixel text-[8px] text-forge-red hover:bg-forge-red/10 transition-colors"
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px',
+                fontFamily: 'var(--pixel-font)', fontSize: '8px', color: 'var(--red-danger)',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+              }}
             >
               Log Out
             </button>

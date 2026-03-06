@@ -24,11 +24,11 @@ export function LiveCounter() {
   if (online === null) return null;
 
   return (
-    <div className="forge-panel px-6 py-3 text-center">
-      <span className="font-pixel text-[9px] sm:text-xs text-forge-green animate-pulse">
+    <div style={{ background: 'var(--bg-mid)', border: 'var(--pixel-border)', padding: '10px 24px', textAlign: 'center', display: 'inline-block' }}>
+      <span style={{ fontFamily: 'var(--pixel-font)', fontSize: '10px', color: 'var(--green-victory)', animation: 'pulse-glow 2s ease-in-out infinite' }}>
         ●
       </span>
-      <span className="font-pixel text-[8px] sm:text-[10px] text-forge-wheat/60 ml-2">
+      <span style={{ fontFamily: 'var(--body-font)', fontSize: '15px', color: 'var(--text-dim)', marginLeft: 8 }}>
         {online > 0
           ? `${online} builder${online !== 1 ? 's' : ''} forging their empire right now`
           : 'Be the first to enter'}
