@@ -105,6 +105,40 @@ export class PreloadScene extends Phaser.Scene {
       });
     }
 
+    // ── Cute Fantasy Buildings (static images) ──
+    this.load.image('cf_inn', '/assets/buildings/Inn_Blue.png');
+    this.load.image('cf_blacksmith', '/assets/buildings/Blacksmith_House_Black.png');
+    this.load.image('cf_market', '/assets/buildings/Market_Stalls.png');
+    this.load.image('cf_church', '/assets/buildings/Church_Black.png');
+    this.load.image('cf_windmill', '/assets/buildings/Windmill.png');
+    this.load.spritesheet('cf_windmill_sail', '/assets/buildings/Windmill_Sail_Anim.png', {
+      frameWidth: 64, frameHeight: 80,
+    });
+
+    // ── Cute Fantasy Decorations ──
+    for (let i = 1; i <= 3; i++) {
+      this.load.spritesheet(`cf_flower_${i}`, `/assets/decorations/flowers/Flowers_${i}_Anim.png`, {
+        frameWidth: 16, frameHeight: 16,
+      });
+    }
+    for (let i = 1; i <= 2; i++) {
+      this.load.spritesheet(`cf_flower_pot_${i}`, `/assets/decorations/flowers_potted/Flowers_${i}_Potted_Anim.png`, {
+        frameWidth: 16, frameHeight: 16,
+      });
+    }
+    this.load.spritesheet('cf_campfire', '/assets/decorations/torches/Campfire_Anim.png', {
+      frameWidth: 32, frameHeight: 32,
+    });
+    this.load.spritesheet('cf_torch', '/assets/decorations/torches/Torch_Anim.png', {
+      frameWidth: 32, frameHeight: 32,
+    });
+    this.load.spritesheet('cf_torch_small', '/assets/decorations/torches/Torch_small_anim.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+    this.load.spritesheet('cf_fountain', '/assets/decorations/torches/Fountain_Anim.png', {
+      frameWidth: 48, frameHeight: 48,
+    });
+
     // Suppress errors for missing sprite files (assets may not exist yet)
     this.load.on('loaderror', (file: any) => {
       if (file?.key && (file.key.includes('_base') || file.key.includes('_upgraded') ||
@@ -253,6 +287,77 @@ export class PreloadScene extends Phaser.Scene {
           repeat: -1,
         });
       }
+    }
+
+    // ── Decoration animations ──
+    // Flowers: 16×16 frames, 6 cols × 10 rows — use row 0 (first color variant), 6 frames
+    for (let i = 1; i <= 3; i++) {
+      const key = `cf_flower_${i}`;
+      if (this.textures.exists(key) && !anims.exists(`${key}_anim`)) {
+        anims.create({
+          key: `${key}_anim`,
+          frames: anims.generateFrameNumbers(key, { start: 0, end: 5 }),
+          frameRate: 3, // ~300ms per frame
+          repeat: -1,
+        });
+      }
+    }
+    // Potted flowers: same layout
+    for (let i = 1; i <= 2; i++) {
+      const key = `cf_flower_pot_${i}`;
+      if (this.textures.exists(key) && !anims.exists(`${key}_anim`)) {
+        anims.create({
+          key: `${key}_anim`,
+          frames: anims.generateFrameNumbers(key, { start: 0, end: 5 }),
+          frameRate: 3,
+          repeat: -1,
+        });
+      }
+    }
+    // Campfire: 32×32, 4 frames
+    if (this.textures.exists('cf_campfire') && !anims.exists('cf_campfire_anim')) {
+      anims.create({
+        key: 'cf_campfire_anim',
+        frames: anims.generateFrameNumbers('cf_campfire', { start: 0, end: 3 }),
+        frameRate: 6,
+        repeat: -1,
+      });
+    }
+    // Torch: 32×32, 4 frames
+    if (this.textures.exists('cf_torch') && !anims.exists('cf_torch_anim')) {
+      anims.create({
+        key: 'cf_torch_anim',
+        frames: anims.generateFrameNumbers('cf_torch', { start: 0, end: 3 }),
+        frameRate: 6,
+        repeat: -1,
+      });
+    }
+    // Small torch: 16×16, 6 frames
+    if (this.textures.exists('cf_torch_small') && !anims.exists('cf_torch_small_anim')) {
+      anims.create({
+        key: 'cf_torch_small_anim',
+        frames: anims.generateFrameNumbers('cf_torch_small', { start: 0, end: 5 }),
+        frameRate: 6,
+        repeat: -1,
+      });
+    }
+    // Fountain: 48×48, ~5 frames (256/48 ≈ 5)
+    if (this.textures.exists('cf_fountain') && !anims.exists('cf_fountain_anim')) {
+      anims.create({
+        key: 'cf_fountain_anim',
+        frames: anims.generateFrameNumbers('cf_fountain', { start: 0, end: 4 }),
+        frameRate: 4,
+        repeat: -1,
+      });
+    }
+    // Windmill sail: 64×80, 4 frames
+    if (this.textures.exists('cf_windmill_sail') && !anims.exists('cf_windmill_sail_anim')) {
+      anims.create({
+        key: 'cf_windmill_sail_anim',
+        frames: anims.generateFrameNumbers('cf_windmill_sail', { start: 0, end: 3 }),
+        frameRate: 6, // ~150ms per frame
+        repeat: -1,
+      });
     }
   }
 }

@@ -239,6 +239,8 @@ export class WorldScene extends Phaser.Scene {
     this.parseZones(mapData);
     this.initAnimatedTiles(mapData);
     this.initWanderingNpcs();
+    this.placeCuteFantasyBuildings();
+    this.placeDecorations();
     this.spawnVillageAnimals();
 
     // ── Player ──────────────────────────────────────────
@@ -993,6 +995,101 @@ export class WorldScene extends Phaser.Scene {
         });
       });
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  BUILDINGS — place Cute Fantasy building sprites at collision coords
+  // ═══════════════════════════════════════════════════════════
+  private placeCuteFantasyBuildings() {
+    // Building placement: texture key → collision box center-bottom position
+    // Buildings are anchored bottom-center on the collision box, rendered at 2x
+    const buildings: { key: string; cx: number; by: number; depth?: number }[] = [
+      // tavern → Inn_Blue (collision: x:704 y:672 w:176 h:144)
+      { key: 'cf_inn', cx: 704 + 88, by: 672 + 144 },
+      // blacksmith (collision: x:320 y:432 w:160 h:128)
+      { key: 'cf_blacksmith', cx: 320 + 80, by: 432 + 128 },
+      // marketplace (collision: x:800 y:432 w:176 h:192)
+      { key: 'cf_market', cx: 800 + 88, by: 432 + 192 },
+      // elder_house → Church (collision: x:992 y:448 w:144 h:128)
+      { key: 'cf_church', cx: 992 + 72, by: 448 + 128 },
+    ];
+
+    for (const b of buildings) {
+      if (!this.textures.exists(b.key)) continue;
+      this.add.image(b.cx, b.by, b.key)
+        .setOrigin(0.5, 1) // anchor bottom-center
+        .setScale(2)
+        .setDepth(b.depth ?? 3); // behind NPCs & player
+    }
+
+    // Windmill (place at an open area near village edge, ~200, 300)
+    if (this.textures.exists('cf_windmill')) {
+      this.add.image(200, 350, 'cf_windmill')
+        .setOrigin(0.5, 1).setScale(2).setDepth(3);
+
+      // Animated sail overlay on top of windmill
+      if (this.textures.exists('cf_windmill_sail')) {
+        const sail = this.add.sprite(200, 280, 'cf_windmill_sail')
+          .setScale(2).setDepth(4);
+        if (this.anims.exists('cf_windmill_sail_anim')) sail.play('cf_windmill_sail_anim');
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  DECORATIONS — flowers, torches, campfire, fountain
+  // ═══════════════════════════════════════════════════════════
+  private placeDecorations() {
+    // Helper: place animated sprite if texture exists
+    const placeAnim = (key: string, animKey: string, x: number, y: number, scale = 2, depth = 2) => {
+      if (!this.textures.exists(key)) return;
+      const s = this.add.sprite(x, y, key).setScale(scale).setDepth(depth);
+      if (this.anims.exists(animKey)) s.play(animKey);
+    };
+
+    // Scattered flowers near paths and buildings
+    const flowerSpots = [
+      { x: 360, y: 580 }, { x: 420, y: 560 }, { x: 500, y: 590 },
+      { x: 750, y: 650 }, { x: 850, y: 600 }, { x: 680, y: 480 },
+    ];
+    flowerSpots.forEach((pos, i) => {
+      const fi = (i % 3) + 1;
+      placeAnim(`cf_flower_${fi}`, `cf_flower_${fi}_anim`, pos.x, pos.y);
+    });
+
+    // Potted flowers near inn and market entrances
+    const pottedSpots = [
+      { x: 770, y: 815 }, { x: 810, y: 815 }, // near tavern door
+      { x: 830, y: 625 }, // near market
+    ];
+    pottedSpots.forEach((pos, i) => {
+      const fi = (i % 2) + 1;
+      placeAnim(`cf_flower_pot_${fi}`, `cf_flower_pot_${fi}_anim`, pos.x, pos.y);
+    });
+
+    // Campfire near village center
+    placeAnim('cf_campfire', 'cf_campfire_anim', 620, 600, 2, 5);
+
+    // Torches along paths
+    const torchSpots = [
+      { x: 540, y: 500 }, { x: 660, y: 500 },
+      { x: 450, y: 700 }, { x: 900, y: 700 },
+    ];
+    torchSpots.forEach(pos => {
+      placeAnim('cf_torch', 'cf_torch_anim', pos.x, pos.y, 2, 5);
+    });
+
+    // Small torches near buildings
+    const smallTorchSpots = [
+      { x: 340, y: 430 }, { x: 480, y: 430 }, // blacksmith
+      { x: 700, y: 670 }, { x: 880, y: 670 }, // tavern area
+    ];
+    smallTorchSpots.forEach(pos => {
+      placeAnim('cf_torch_small', 'cf_torch_small_anim', pos.x, pos.y, 2, 5);
+    });
+
+    // Fountain in village square
+    placeAnim('cf_fountain', 'cf_fountain_anim', 620, 500, 2, 5);
   }
 
   // ═══════════════════════════════════════════════════════════
