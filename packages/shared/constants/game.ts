@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 
 // ── Map File ────────────────────────────────────────────────
-export const MAP_FILE = '/maps/starter_village_v2.tmj';
+export const MAP_FILE = '/assets/maps/midforge_world.tmj';
 
 // ── Tile Dimensions (defaults — overridden by map properties) ─
 export const TILE_SIZE = 16;
@@ -429,21 +429,53 @@ export const TERRAIN: Record<string, number> = {
   DECORATION: 8,
 };
 
-// ── Intro Sequence ──────────────────────────────────────────
+// ── Intro Sequence (Phase 1) ────────────────────────────────
 export const INTRO = {
   typewriterSpeed: 40,          // ms per character
-  forgeMasterWalkSpeed: 30,     // pixels per second
-  gateOpenDuration: 1000,       // ms
-  zoomStart: 1.0,
-  zoomEnd: 1.4,
-  zoomDuration: 3000,           // ms
-  glowPathFadeDuration: 5000,   // ms after player reaches NPC
+  forgeMasterWalkSpeed: 30,     // pixels per second (legacy)
+  gateOpenDuration: 1000,       // ms (legacy)
+  zoomStart: 1.8,               // tight zoom on player at north gate
+  zoomEnd: 1.0,                 // normal zoom ratio (multiplied by map cameraZoom)
+  zoomDuration: 1500,           // ms — camera pullback duration
+  glowPathFadeDuration: 5000,   // ms after intro completes
+  // Phase 1 cinematic arrival text
+  cinematicLines: [
+    'A stranger arrives in Midforge...',
+    '...with nothing but a sword and a name.',
+    'The Arena champion has never been beaten.',
+  ],
+  cinematicLinePause: 1800,     // ms between lines
+  cinematicFadeMs: 500,         // ms for fade in/out
+  scriptedWalkTiles: 3,         // tiles to walk south after camera pullback
+  scriptedWalkSpeed: 40,        // pixels per second during scripted walk
+  // North gate spawn: tile (32, 3) = pixel (520, 56)
+  northGateSpawn: { x: 520, y: 56 },
+  // Legacy dialogue lines (kept for backward compat)
   dialogLines: [
     'Welcome to Midforge, @{username}.',
     'Your power here reflects what you build in the real world.',
     'Connect your craft. Begin your legend.',
   ],
 } as const;
+
+// ── Daily Quest Pool (Step 6) ───────────────────────────────
+export const DAILY_QUESTS = [
+  { id: 'kill_3',    text: 'Defeat 3 enemies',            target: 3,  type: 'kills',   xp: 100, gold: 50  },
+  { id: 'kill_5',    text: 'Defeat 5 enemies',            target: 5,  type: 'kills',   xp: 150, gold: 75  },
+  { id: 'win_arena', text: 'Win 1 Arena fight',           target: 1,  type: 'arena',   xp: 200, gold: 100 },
+  { id: 'explore',   text: 'Visit 3 different buildings',  target: 3,  type: 'explore', xp: 75,  gold: 40  },
+  { id: 'deliver',   text: 'Complete a delivery quest',    target: 1,  type: 'quest',   xp: 120, gold: 60  },
+  { id: 'login',     text: 'Log in today',                 target: 1,  type: 'login',   xp: 50,  gold: 25  },
+  { id: 'kill_10',   text: 'Defeat 10 enemies',           target: 10, type: 'kills',   xp: 300, gold: 150 },
+] as const;
+
+export function getDailyQuest(): typeof DAILY_QUESTS[number] {
+  const now = new Date();
+  const start = new Date(now.getUTCFullYear(), 0, 0);
+  const diff = now.getTime() - start.getTime();
+  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+  return DAILY_QUESTS[dayOfYear % DAILY_QUESTS.length];
+}
 
 // ── Text Styles ─────────────────────────────────────────────
 export const TEXT_STYLES = {

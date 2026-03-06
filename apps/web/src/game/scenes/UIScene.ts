@@ -1,6 +1,6 @@
 // @ts-ignore — Phaser exports default from ESM build
 import Phaser from 'phaser';
-import { TILE_SIZE, FORM_UNLOCK_XP } from '@midforge/shared/constants/game';
+import { TILE_SIZE, FORM_UNLOCK_XP, getDailyQuest } from '@midforge/shared/constants/game';
 
 export class UIScene extends Phaser.Scene {
   private hpBar!: Phaser.GameObjects.Graphics;
@@ -125,6 +125,18 @@ export class UIScene extends Phaser.Scene {
 
     // ── Activity feed ticker (social proof) ──
     this.loadActivityFeed();
+
+    // ── Phase E.2: Daily quests HUD (right side) ──
+    this.loadDailyQuests();
+
+    // ── Step 8: Login streak HUD + notification listener ──
+    this.createStreakHUD();
+    this.game.events.on('login_streak_update', (data: { streak: number }) => {
+      this.updateStreakHUD(data.streak);
+    });
+    this.game.events.on('login_streak_notification', (data: { streak: number; xp: number; gold: number; username: string }) => {
+      this.showStreakNotification(data);
+    });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -355,6 +367,361 @@ export class UIScene extends Phaser.Scene {
     if (progress >= 0.9 && progress < 1) {
       this.xpLabel.setColor('#F39C12');
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  STEP 6 — DAILY QUEST HUD (bottom-right, prominent)
+  // ═══════════════════════════════════════════════════════════
+  private dailyQuestElements: Phaser.GameObjects.GameObject[] = [];
+  private dqCountdownText: Phaser.GameObjects.Text | null = null;
+  private dqProgressText: Phaser.GameObjects.Text | null = null;
+  private dqProgressBar: Phaser.GameObjects.Graphics | null = null;
+  private dqStatusText: Phaser.GameObjects.Text | null = null;
+  private dqBorderGfx: Phaser.GameObjects.Graphics | null = null;
+  private dqCompleted = false;
+
+  private loadDailyQuests() {
+    const quest = getDailyQuest();
+    const today = new Date().toISOString().slice(0, 10);
+    const storageKey = `midforge_daily_${quest.id}_${today}`;
+    const completedKey = `midforge_daily_completed_${today}`;
+
+    let progress = 0;
+    let completed = false;
+    if (typeof window !== 'undefined') {
+      progress = parseInt(localStorage.getItem(storageKey) ?? '0', 10);
+      completed = localStorage.getItem(completedKey) === 'true';
+      // Auto-grant 'login' quest
+      if (quest.type === 'login' && progress === 0 && !completed) {
+        progress = 1;
+        localStorage.setItem(storageKey, '1');
+      }
+    }
+    this.dqCompleted = completed || progress >= quest.target;
+
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const panelW = 170;
+    const panelH = 56;
+    const panelX = W - panelW - 8;
+    const panelY = H - panelH - 8;
+    const R = 4;
+
+    // Background
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0d0a1e, 0.9);
+    bg.fillRoundedRect(panelX, panelY, panelW, panelH, 4);
+    this.dailyQuestElements.push(bg);
+
+    // Border (gold, will flash on completion)
+    this.dqBorderGfx = this.add.graphics();
+    this.dqBorderGfx.lineStyle(2, this.dqCompleted ? 0x27AE60 : 0xFFB800, 0.7);
+    this.dqBorderGfx.strokeRoundedRect(panelX, panelY, panelW, panelH, 4);
+    this.dailyQuestElements.push(this.dqBorderGfx);
+
+    // Title + countdown
+    this.add.text(panelX + 6, panelY + 4, 'DAILY QUEST', {
+      fontFamily: '"Press Start 2P"', fontSize: '5px',
+      color: '#FFB800', resolution: R,
+    }).setDepth(101);
+
+    // Countdown to midnight UTC
+    this.dqCountdownText = this.add.text(panelX + panelW - 6, panelY + 4, '', {
+      fontFamily: '"Press Start 2P"', fontSize: '5px',
+      color: '#888888', resolution: R,
+    }).setOrigin(1, 0).setDepth(101);
+    this.updateDailyCountdown();
+
+    // Quest text
+    this.dqStatusText = this.add.text(panelX + 6, panelY + 16, this.dqCompleted ? 'QUEST COMPLETE!' : quest.text, {
+      fontFamily: '"Press Start 2P"', fontSize: '5px',
+      color: this.dqCompleted ? '#27AE60' : '#FFFFFF', resolution: R,
+      wordWrap: { width: panelW - 12 },
+    }).setDepth(101);
+
+    // Progress bar
+    const barX = panelX + 6;
+    const barY = panelY + 30;
+    const barW = panelW - 50;
+    const barH = 6;
+    const pct = Math.min(1, progress / quest.target);
+
+    this.dqProgressBar = this.add.graphics();
+    this.dqProgressBar.fillStyle(0x1a0a2e, 1);
+    this.dqProgressBar.fillRect(barX, barY, barW, barH);
+    this.dqProgressBar.fillStyle(this.dqCompleted ? 0x27AE60 : 0x4A90D9, 1);
+    this.dqProgressBar.fillRect(barX, barY, barW * pct, barH);
+    this.dqProgressBar.lineStyle(1, 0xFFB800, 0.3);
+    this.dqProgressBar.strokeRect(barX, barY, barW, barH);
+    this.dqProgressBar.setDepth(101);
+
+    // Progress label
+    this.dqProgressText = this.add.text(barX + barW + 4, barY + 1, `${Math.min(progress, quest.target)} / ${quest.target}`, {
+      fontFamily: '"Press Start 2P"', fontSize: '4px',
+      color: this.dqCompleted ? '#27AE60' : '#AAAAAA', resolution: R,
+    }).setDepth(101);
+
+    // Reward hint
+    this.add.text(panelX + 6, panelY + panelH - 12, `Reward: ${quest.xp} XP + ${quest.gold} Gold`, {
+      fontFamily: '"Press Start 2P"', fontSize: '3px',
+      color: '#888888', resolution: R,
+    }).setDepth(101);
+
+    // Listen for daily quest progress events
+    this.game.events.on('daily_quest_progress', (data: { type: string; amount: number }) => {
+      this.incrementDailyQuest(data.type, data.amount);
+    });
+
+    // Also listen for building visits (from interior scenes)
+    this.game.events.on('building_visited', (_building: string) => {
+      this.incrementDailyQuest('explore', 1);
+    });
+
+    // Update countdown every 30s
+    this.time.addEvent({
+      delay: 30000,
+      callback: () => this.updateDailyCountdown(),
+      loop: true,
+    });
+  }
+
+  private updateDailyCountdown() {
+    if (!this.dqCountdownText) return;
+    const now = new Date();
+    const midnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const diff = midnight.getTime() - now.getTime();
+    const hours = Math.floor(diff / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    this.dqCountdownText.setText(`${hours}:${mins.toString().padStart(2, '0')}`);
+  }
+
+  private incrementDailyQuest(type: string, amount: number) {
+    if (this.dqCompleted) return;
+
+    const quest = getDailyQuest();
+    if (quest.type !== type) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const storageKey = `midforge_daily_${quest.id}_${today}`;
+    const completedKey = `midforge_daily_completed_${today}`;
+
+    let progress = 0;
+    if (typeof window !== 'undefined') {
+      progress = parseInt(localStorage.getItem(storageKey) ?? '0', 10);
+      progress += amount;
+      localStorage.setItem(storageKey, String(progress));
+    }
+
+    // Update HUD
+    const pct = Math.min(1, progress / quest.target);
+    if (this.dqProgressText) {
+      this.dqProgressText.setText(`${Math.min(progress, quest.target)} / ${quest.target}`);
+    }
+
+    // Redraw progress bar
+    if (this.dqProgressBar) {
+      const W = this.cameras.main.width;
+      const panelW = 170;
+      const panelX = W - panelW - 8;
+      const panelH = 56;
+      const panelY = this.cameras.main.height - panelH - 8;
+      const barX = panelX + 6;
+      const barY = panelY + 30;
+      const barW = panelW - 50;
+      const barH = 6;
+
+      this.dqProgressBar.clear();
+      this.dqProgressBar.fillStyle(0x1a0a2e, 1);
+      this.dqProgressBar.fillRect(barX, barY, barW, barH);
+      this.dqProgressBar.fillStyle(pct >= 1 ? 0x27AE60 : 0x4A90D9, 1);
+      this.dqProgressBar.fillRect(barX, barY, barW * pct, barH);
+      this.dqProgressBar.lineStyle(1, 0xFFB800, 0.3);
+      this.dqProgressBar.strokeRect(barX, barY, barW, barH);
+    }
+
+    // Check completion
+    if (progress >= quest.target && !this.dqCompleted) {
+      this.dqCompleted = true;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(completedKey, 'true');
+      }
+      this.playDailyQuestCompletion(quest.xp, quest.gold);
+    }
+  }
+
+  private playDailyQuestCompletion(xp: number, gold: number) {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const panelW = 170;
+    const panelX = W - panelW - 8;
+    const panelH = 56;
+    const panelY = H - panelH - 8;
+
+    // 1. Flash gold border 3 times
+    let flashCount = 0;
+    const flashTimer = this.time.addEvent({
+      delay: 200,
+      repeat: 5,
+      callback: () => {
+        if (!this.dqBorderGfx) return;
+        this.dqBorderGfx.clear();
+        const show = flashCount % 2 === 0;
+        this.dqBorderGfx.lineStyle(2, show ? 0xFFB800 : 0x27AE60, show ? 1 : 0.5);
+        this.dqBorderGfx.strokeRoundedRect(panelX, panelY, panelW, panelH, 4);
+        flashCount++;
+      },
+    });
+
+    // 2. Update status text
+    if (this.dqStatusText) {
+      this.dqStatusText.setText('QUEST COMPLETE!').setColor('#FFB800');
+    }
+    if (this.dqProgressText) {
+      this.dqProgressText.setColor('#27AE60');
+    }
+
+    // 3. XP float from quest box position
+    const floatX = panelX + panelW / 2;
+    const floatY = panelY - 10;
+    const xpFloat = this.add.text(floatX, floatY, `+${xp} XP`, {
+      fontFamily: '"Press Start 2P"', fontSize: '8px',
+      color: '#FFB800', stroke: '#000000', strokeThickness: 3, resolution: 4,
+    }).setOrigin(0.5).setDepth(200);
+
+    const goldFloat = this.add.text(floatX, floatY + 14, `+${gold}G`, {
+      fontFamily: '"Press Start 2P"', fontSize: '6px',
+      color: '#F5D442', stroke: '#000000', strokeThickness: 3, resolution: 4,
+    }).setOrigin(0.5).setDepth(200);
+
+    this.tweens.add({
+      targets: [xpFloat, goldFloat],
+      y: `-=30`, alpha: 0,
+      duration: 2000, ease: 'Power2',
+      onComplete: () => { xpFloat.destroy(); goldFloat.destroy(); },
+    });
+
+    // 4. Emit award event
+    this.game.events.emit('award_xp_gold', { xp, gold });
+
+    // 5. After 3s, show "New quest tomorrow!"
+    this.time.delayedCall(3000, () => {
+      if (this.dqStatusText) {
+        this.dqStatusText.setText('New quest tomorrow!').setColor('#888888');
+      }
+      // Final border state
+      if (this.dqBorderGfx) {
+        this.dqBorderGfx.clear();
+        this.dqBorderGfx.lineStyle(2, 0x27AE60, 0.5);
+        this.dqBorderGfx.strokeRoundedRect(panelX, panelY, panelW, panelH, 4);
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  STEP 8 — LOGIN STREAK HUD + NOTIFICATION
+  // ═══════════════════════════════════════════════════════════
+  private streakText: Phaser.GameObjects.Text | null = null;
+  private streakBg: Phaser.GameObjects.Graphics | null = null;
+
+  private createStreakHUD() {
+    const W = this.cameras.main.width;
+    const R = 4;
+    const x = W - 100;
+    const y = 92; // Below minimap area
+
+    this.streakBg = this.add.graphics();
+    this.streakBg.fillStyle(0x0d0a1e, 0.8);
+    this.streakBg.fillRoundedRect(x, y, 44, 16, 3);
+    this.streakBg.lineStyle(1, 0xFFB800, 0.3);
+    this.streakBg.strokeRoundedRect(x, y, 44, 16, 3);
+    this.streakBg.setDepth(100);
+
+    this.streakText = this.add.text(x + 22, y + 8, '0', {
+      fontFamily: '"Press Start 2P"', fontSize: '6px',
+      color: '#FFFFFF', resolution: R,
+    }).setOrigin(0.5).setDepth(101);
+  }
+
+  private updateStreakHUD(streak: number) {
+    if (!this.streakText) return;
+    const prefix = streak >= 3 ? '\uD83D\uDD25 ' : '';
+    this.streakText.setText(`${prefix}${streak}`);
+    if (streak >= 7) {
+      this.streakText.setColor('#FFB800');
+    } else if (streak >= 3) {
+      this.streakText.setColor('#FF6600');
+    }
+  }
+
+  private showStreakNotification(data: { streak: number; xp: number; gold: number; username: string }) {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const R = 4;
+
+    const boxW = 240;
+    const boxH = 90;
+    const bx = W / 2 - boxW / 2;
+    const by = H / 2 - boxH / 2;
+    const streak = data.streak;
+    const xpBonus = 10 + streak * 5;
+
+    // Background
+    const bg = this.add.rectangle(W / 2, H / 2, boxW, boxH, 0x0D0D1A, 0.95)
+      .setScrollFactor(0).setDepth(900);
+
+    // Gold border
+    const border = this.add.graphics().setScrollFactor(0).setDepth(901);
+    border.lineStyle(2, 0xFFB800, 1);
+    border.strokeRect(bx, by, boxW, boxH);
+
+    // Title
+    const firePrefix = streak >= 3 ? '\uD83D\uDD25 ' : '';
+    const title = this.add.text(W / 2, by + 14, `${firePrefix}LOGIN STREAK`, {
+      fontFamily: '"Press Start 2P"', fontSize: '8px',
+      color: '#FFB800', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(902);
+
+    // Streak number
+    const streakNum = this.add.text(W / 2, by + 34, `${streak} DAYS IN A ROW!`, {
+      fontFamily: '"Press Start 2P"', fontSize: '10px',
+      color: '#FFFFFF', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(902);
+
+    // XP bonus
+    const xpText = this.add.text(W / 2, by + 54, `+${data.xp} XP  +${data.gold}G  bonus awarded`, {
+      fontFamily: '"Press Start 2P"', fontSize: '5px',
+      color: '#4A90D9', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(902);
+
+    // Flavor
+    const flavor = this.add.text(W / 2, by + boxH - 12, `Keep it up!`, {
+      fontFamily: '"Press Start 2P"', fontSize: '5px',
+      color: '#888888', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(902);
+
+    const allElements = [bg, border, title, streakNum, xpText, flavor];
+
+    // Scale-in animation
+    for (const el of allElements) {
+      if ('setScale' in el) (el as any).setScale(0);
+    }
+    this.tweens.add({
+      targets: allElements,
+      scaleX: 1, scaleY: 1,
+      duration: 300, ease: 'Back.easeOut',
+    });
+
+    // Auto-dismiss after 3s
+    this.time.delayedCall(3000, () => {
+      this.tweens.add({
+        targets: allElements,
+        alpha: 0,
+        duration: 400,
+        onComplete: () => {
+          for (const el of allElements) el.destroy();
+        },
+      });
+    });
   }
 
   private drawBar(graphics: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, pct: number, color: number) {

@@ -49,6 +49,17 @@ async function claimDailyLogin(game: any) {
     const res = await fetch('/api/player/daily-login', { method: 'POST' });
     if (!res.ok) return;
     const data = await res.json();
+
+    // Phase E: Spawn physical daily chest in WorldScene
+    const worldScene = game.scene.getScene('WorldScene') as any;
+    if (worldScene?.spawnDailyChest) {
+      const canClaim = !data.alreadyClaimed;
+      worldScene.spawnDailyChest(canClaim, data.streak ?? 1);
+    }
+
+    // Always emit streak for HUD display
+    game.events.emit('login_streak_update', { streak: data.streak ?? 1 });
+
     if (data.alreadyClaimed || !data.reward) return;
     // First-login welcome bonus
     if (data.firstLogin && data.firstLoginBonus) {
@@ -58,10 +69,32 @@ async function claimDailyLogin(game: any) {
       );
       await new Promise(r => setTimeout(r, 3000));
     }
-    // Show daily reward via zone banner
+    // Step 8: Show streak notification overlay
+    game.events.emit('login_streak_notification', {
+      streak: data.streak,
+      xp: data.reward.xp,
+      gold: data.reward.gold,
+      username: data.username ?? '',
+    });
+  } catch (_e) {
+    // Non-critical
+  }
+}
+
+// Phase E.3: Check idle income on login
+async function checkIdleIncome(game: any) {
+  try {
+    const res = await fetch('/api/player/idle-income', { method: 'POST' });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.claimed || data.idleGold <= 0) return;
+
+    // Wait for daily login banner to clear
+    await new Promise(r => setTimeout(r, 4000));
+
     game.events.emit(
       'zone_enter_banner',
-      `DAY ${data.streak} — +${data.reward.xp} XP  +${data.reward.gold}G`
+      `WHILE YOU WERE AWAY — +${data.idleGold}G (${data.hoursAway}h)`
     );
   } catch (_e) {
     // Non-critical
@@ -102,6 +135,10 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
       const { WorldScene } = await import('@/game/scenes/WorldScene');
       const { UIScene } = await import('@/game/scenes/UIScene');
       const { default: DungeonScene } = await import('@/game/scenes/DungeonScene');
+      const { default: TavernScene } = await import('@/game/scenes/TavernScene');
+      const { default: BlacksmithScene } = await import('@/game/scenes/BlacksmithScene');
+      const { default: ChurchScene } = await import('@/game/scenes/ChurchScene');
+      const { default: InventoryScene } = await import('@/game/scenes/InventoryScene');
 
       if (gameRef.current) return;
 
@@ -127,7 +164,7 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
           default: 'arcade',
           arcade: { gravity: { x: 0, y: 0 }, debug: false },
         },
-        scene: [PreloadScene, WorldScene, UIScene, DungeonScene],
+        scene: [PreloadScene, WorldScene, UIScene, DungeonScene, TavernScene, BlacksmithScene, ChurchScene, InventoryScene],
         scale: {
           mode: mobile ? Phaser.Scale.RESIZE : Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -158,6 +195,8 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
         }
         // Claim daily login reward on world load
         claimDailyLogin(game);
+        // Phase E.3: Check idle income
+        checkIdleIncome(game);
       });
 
       // Bridge Phaser events → React state
@@ -167,6 +206,56 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
       game.events.on('npc_arena', () => { setBrigandData(null); setActivePanel('arena'); });
       game.events.on('npc_marketplace', () => setActivePanel('marketplace'));
       game.events.on('brigand_encounter', (data: any) => { setBrigandData(data); setActivePanel('arena'); });
+
+      // Phase 1: Tutorial battle — route through arena panel with tutorial enemy data
+      game.events.on('start_tutorial_battle', (data: any) => {
+        setBrigandData(data); setActivePanel('arena');
+      });
+
+      // Phase 1: Starter sword — award via inventory API
+      game.events.on('equip_starter_sword', async () => {
+        try {
+          await fetch('/api/inventory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'equip', item: 'starter_sword', slot: 'weapon', stats: { atk: 5 } }),
+          });
+        } catch (_e) { /* silent — sword is cosmetic for now */ }
+      });
+
+      // Step 5: Blacksmith purchase — deduct gold, update stats
+      game.events.on('blacksmith_purchase', async (data: any) => {
+        try {
+          await fetch('/api/inventory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'equip', item: data.name, slot: data.stat === 'atk' ? 'weapon' : 'armor', stats: { [data.stat]: data.bonus }, cost: data.cost }),
+          });
+        } catch (_e) { /* silent */ }
+      });
+
+      // Step 5: Church heal — restore HP to max
+      game.events.on('church_heal', async () => {
+        try {
+          await fetch('/api/player/stats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'heal_full' }),
+          });
+        } catch (_e) { /* silent */ }
+      });
+
+      // Step 5: Award XP + Gold from interior scenes
+      game.events.on('award_xp_gold', async (data: { xp: number; gold: number }) => {
+        try {
+          await fetch('/api/player/stats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'award', xp: data.xp, gold: data.gold }),
+          });
+        } catch (_e) { /* silent */ }
+      });
+
       // map_transition now handled in-game via typewriter dialogue (WorldScene)
 
       gameRef.current = game;

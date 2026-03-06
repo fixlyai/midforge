@@ -4,6 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import BiomeBackground from './BiomeBackground';
 import type { BiomeKey } from './BiomeBackground';
 import BattleSprite, { BRIGAND_ENEMY_MAP } from './BattleSprite';
+import { SoundManager } from '@/game/managers/SoundManager';
+
+const LOOT_RARITY_COLORS: Record<string, string> = {
+  common: '#9E9E9E', uncommon: '#4CAF50', rare: '#2196F3', epic: '#9C27B0', legendary: '#FF9800',
+};
 
 // ─── Quest Panel ───
 interface QuestDef {
@@ -464,6 +469,14 @@ function ArenaFightScene({
     const newCHp = newDHp > 0 ? Math.max(0, realCHp.current - ghostDmg) : realCHp.current;
 
     // Player attacks ghost (unless blocking)
+    if (action === 'block') {
+      SoundManager.play('block_shield');
+    } else if (action === 'powerStrike') {
+      SoundManager.play('power_charge');
+    } else {
+      SoundManager.play('sword_swing');
+    }
+
     if (action !== 'block') {
       setHitLeft(true);
       setFlashBg('right');
@@ -474,6 +487,12 @@ function ArenaFightScene({
       if (playerDmg > 0) {
         setShakeRight(true);
         setDmgRight(playerDmg);
+        // Phase C: hit impact SFX + crit SFX
+        if (action === 'powerStrike') {
+          SoundManager.play('critical_hit');
+        } else {
+          SoundManager.play('hit_impact');
+        }
       }
       realDHp.current = newDHp;
       setDHp(newDHp);
@@ -481,11 +500,17 @@ function ArenaFightScene({
       setTimeout(() => {
         setShakeRight(false); setDmgRight(null); setFlashBg(null);
         if (isDead(newDHp)) {
+          SoundManager.play('victory_fanfare');
           setTimeout(() => { setPhase('result'); busy.current = false; }, 600);
           return;
         }
         // Ghost retaliates
         setTimeout(() => {
+          if (gAction === 'block') {
+            SoundManager.play('block_shield');
+          } else {
+            SoundManager.play('sword_swing');
+          }
           if (gAction !== 'block') {
             setHitRight(true);
             setFlashBg('left');
@@ -495,6 +520,11 @@ function ArenaFightScene({
             if (ghostDmg > 0) {
               setShakeLeft(true);
               setDmgLeft(ghostDmg);
+              if (gAction === 'powerStrike') {
+                SoundManager.play('critical_hit');
+              } else {
+                SoundManager.play('hit_impact');
+              }
             }
             realCHp.current = newCHp;
             setCHp(newCHp);
@@ -502,6 +532,7 @@ function ArenaFightScene({
               setShakeLeft(false); setDmgLeft(null); setFlashBg(null);
               setGhostAction(null);
               if (isDead(newCHp)) {
+                SoundManager.play('defeat');
                 setTimeout(() => { setPhase('result'); busy.current = false; }, 600);
               } else {
                 setCanAttack(true); busy.current = false;
@@ -660,8 +691,8 @@ function ResultScreen({ result, onDone }: { result: GhostFightResult; onDone: ()
 
   useEffect(() => {
     const t1 = setTimeout(() => setVisible(true), 100);
-    const t2 = setTimeout(() => setShowRewards(true), 700);
-    const t3 = result.evolved ? setTimeout(() => setShowEvo(true), 1400) : null;
+    const t2 = setTimeout(() => { setShowRewards(true); SoundManager.play('coin'); }, 700);
+    const t3 = result.evolved ? setTimeout(() => { setShowEvo(true); SoundManager.play('levelup'); }, 1400) : null;
     return () => { clearTimeout(t1); clearTimeout(t2); if (t3) clearTimeout(t3); };
   }, [result.evolved]);
 
@@ -687,7 +718,7 @@ function ResultScreen({ result, onDone }: { result: GhostFightResult; onDone: ()
       </div>
 
       {showRewards && (
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 16, animation: 'vsPopIn 0.3s ease-out forwards' }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 16, flexWrap: 'wrap', animation: 'vsPopIn 0.3s ease-out forwards' }}>
           <div style={{ background: '#F39C1220', border: '1px solid #F39C1260', borderRadius: 20, padding: '6px 14px', fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: '#F39C12' }}>
             +{result.xpReward} XP
           </div>
@@ -696,6 +727,27 @@ function ResultScreen({ result, onDone }: { result: GhostFightResult; onDone: ()
               +{result.goldReward}G
             </div>
           )}
+        </div>
+      )}
+
+      {/* Phase D: Loot Drop Display */}
+      {showRewards && (result as any).lootDrop && (
+        <div style={{
+          background: `${LOOT_RARITY_COLORS[(result as any).lootDrop.rarity] ?? '#9E9E9E'}15`,
+          border: `2px solid ${LOOT_RARITY_COLORS[(result as any).lootDrop.rarity] ?? '#9E9E9E'}60`,
+          borderRadius: 8, padding: '8px 14px', marginBottom: 16,
+          animation: 'vsPopIn 0.4s ease-out forwards',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: LOOT_RARITY_COLORS[(result as any).lootDrop.rarity] ?? '#9E9E9E', textShadow: `0 0 8px ${LOOT_RARITY_COLORS[(result as any).lootDrop.rarity] ?? '#9E9E9E'}` }}>
+            {(result as any).lootDrop.icon} {(result as any).lootDrop.name}
+          </div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 6, color: LOOT_RARITY_COLORS[(result as any).lootDrop.rarity] ?? '#9E9E9E', marginTop: 4, textTransform: 'uppercase' as const }}>
+            {(result as any).lootDrop.rarity} {(result as any).lootDrop.type}
+          </div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 5, color: '#ffffff50', marginTop: 4, fontStyle: 'italic' }}>
+            {(result as any).lootDrop.flavorText}
+          </div>
         </div>
       )}
 

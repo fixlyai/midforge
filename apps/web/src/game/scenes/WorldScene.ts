@@ -63,8 +63,11 @@ import {
   INTRO, TEXT_STYLES,
   getCharacterSpriteKey, TIER_PARTICLE_COLORS,
 } from '@midforge/shared/constants/game';
+import { PlayerCharacter } from '@/game/PlayerCharacter';
+import { type CharacterData, type VisualTier, type GearItem, DEFAULT_CHARACTER_DATA, TIER_CONFIG, GEAR_CATALOG, equipGear, unequipGear } from '@midforge/shared/character';
 import { QuestManager } from '@/game/managers/QuestManager';
 import { MusicManager } from '@/game/managers/MusicManager';
+import { SoundManager } from '@/game/managers/SoundManager';
 import { NPC_QUEST_CHAINS } from '@/game/data/npcQuests';
 import { getAmbientLine } from '@/game/data/ambientDialogue';
 
@@ -112,13 +115,16 @@ export class WorldScene extends Phaser.Scene {
   private playerGlow!: Phaser.GameObjects.Ellipse;
   private cloudLayer: Phaser.GameObjects.TileSprite | null = null;
   private nameLabel!: Phaser.GameObjects.Text;
+  // Character Visual System — 6-layer renderer
+  public playerCharacter: PlayerCharacter | null = null;
+  private characterData: CharacterData = { ...DEFAULT_CHARACTER_DATA };
   private inputEnabled = false;
 
   private footstepCounter = 0;
   private stuckFrames = 0;
   private groundData: number[] = [];
-  private mapCols = 80;
-  private mapRows = 70;
+  private mapCols = 64;
+  private mapRows = 64;
 
   // Multiplayer
   private colyseusRoom: any = null;
@@ -194,11 +200,11 @@ export class WorldScene extends Phaser.Scene {
   // Brigands — hostile encounter NPCs
   private static readonly BRIGAND_TYPES = [
     { name: 'Forest Brigand', color: 0x2D5A27, tier: 'villager', levelRange: [1, 3], xpRange: [15, 40], goldRange: [5, 15],
-      zones: [{ x: 380, y: 100, w: 200, h: 300 }, { x: 800, y: 100, w: 160, h: 280 }] },
+      zones: [{ x: 60, y: 60, w: 200, h: 200 }, { x: 760, y: 60, w: 200, h: 200 }] },
     { name: 'Cave Troll', color: 0x6B5B4F, tier: 'apprentice', levelRange: [3, 6], xpRange: [40, 80], goldRange: [15, 30],
-      zones: [{ x: 100, y: 500, w: 250, h: 200 }, { x: 900, y: 550, w: 200, h: 200 }] },
+      zones: [{ x: 60, y: 760, w: 200, h: 200 }, { x: 760, y: 760, w: 200, h: 200 }] },
     { name: 'Deserter Knight', color: 0x8B2500, tier: 'merchant', levelRange: [5, 8], xpRange: [80, 150], goldRange: [30, 60],
-      zones: [{ x: 480, y: 200, w: 300, h: 150 }] },
+      zones: [{ x: 200, y: 300, w: 200, h: 150 }] },
   ] as const;
   private brigands: {
     sprite: Phaser.GameObjects.Arc;
@@ -249,6 +255,52 @@ export class WorldScene extends Phaser.Scene {
   private readonly AMBIENT_COOLDOWN_MS = 30_000; // 30 seconds per NPC
   private readonly AMBIENT_RANGE = 120;
 
+  // Welcome chest (Phase B — First 60 seconds)
+  private welcomeChest: {
+    sprite: Phaser.GameObjects.Rectangle;
+    glow: Phaser.GameObjects.Arc;
+    label: Phaser.GameObjects.Text;
+    x: number; y: number;
+    opened: boolean;
+  } | null = null;
+  private readonly WELCOME_CHEST_PICKUP_DIST = 28;
+
+  // Quest beacon (Phase B — floating arrow above target NPC)
+  private questBeacon: Phaser.GameObjects.Text | null = null;
+  private questBeaconTarget: string | null = null; // NPC id to point at
+
+  // Ambient sound timer
+  private ambientSoundTimer: Phaser.Time.TimerEvent | null = null;
+
+  // Phase 1 — Tutorial state
+  private gatekeeperSprite: Phaser.GameObjects.Sprite | null = null;
+  private gatekeeperLabel: Phaser.GameObjects.Text | null = null;
+  private gatekeeperShadow: Phaser.GameObjects.Ellipse | null = null;
+  private gatekeeperTriggered = false;
+  private tutorialBrigandSprite: Phaser.GameObjects.Sprite | null = null;
+  private tutorialBrigandExcl: Phaser.GameObjects.Text | null = null;
+  private tutorialBrigandTriggered = false;
+  private static readonly GATEKEEPER_POS = { x: 520, y: 104 }; // tile (32, 6)
+  private static readonly BRIGAND_POS = { x: 184, y: 504 };     // tile ~(11, 31)
+  private static readonly GATEKEEPER_TRIGGER_DIST = 48;          // 3 tiles
+  private static readonly BRIGAND_TRIGGER_DIST = 80;             // 5 tiles
+
+  // Step 7 — Other players (polling)
+  private static readonly NEARBY_POLL_MS = 30_000; // 30s
+  private static readonly POSITION_SAVE_MS = 5_000; // 5s
+  private nearbySprites = new Map<string, { pc: PlayerCharacter; clickZone: Phaser.GameObjects.Zone }>();
+  private nearbyPopup: Phaser.GameObjects.GameObject[] = [];
+  private lastPositionSaveTime = 0;
+  private lastNearbyPollTime = 0;
+
+  // Building door positions (pixel coords — south face of each building)
+  private static readonly BUILDING_DOORS: { scene: string; x: number; y: number; w: number; h: number }[] = [
+    { scene: 'TavernScene',     x: 688, y: 464, w: 32, h: 16 },  // Inn_Blue south face
+    { scene: 'BlacksmithScene', x: 192, y: 816, w: 32, h: 16 },  // Blacksmith south face
+    { scene: 'ChurchScene',     x: 176, y: 144, w: 32, h: 16 },  // Church south face
+  ];
+  private lastDoorTime = 0;
+
   // Mobile touch controls (driven by React MobileControlPanel via CustomEvents)
   private isMobile = false;
   private mobileState = { left: false, right: false, up: false, down: false };
@@ -256,10 +308,10 @@ export class WorldScene extends Phaser.Scene {
   private mobileInteractHandler: (() => void) | null = null;
   private mobileInventoryHandler: (() => void) | null = null;
 
-  // Spawn points from map
-  private spawnDefault = { x: 624, y: 736 };
-  private spawnNewGame = { x: 624, y: 240 };
-  private questGiverPos = { x: 640, y: 592 };
+  // Spawn points from map (new 64×64 map — plaza center)
+  private spawnDefault = { x: 512, y: 512 };
+  private spawnNewGame = { x: 512, y: 512 };
+  private questGiverPos = { x: 176, y: 208 };
 
   constructor() {
     super({ key: 'WorldScene' });
@@ -287,22 +339,26 @@ export class WorldScene extends Phaser.Scene {
     this.walls = this.physics.add.staticGroup();
 
     // ── Render layers ────────────────────────────────────
-    this.renderGroundLayer(mapData);
+    this.renderAllTileLayers(mapData);
     this.renderCollisionLayer(mapData);
     this.parseSpawnPoints(mapData);
     this.spawnNpcsFromMap(mapData);
+    this.spawnAnimalsFromMap(mapData);
+    this.placeTreesFromMap(mapData);
     this.parseZones(mapData);
     this.initAnimatedTiles(mapData);
     this.initWanderingNpcs();
     this.placeCuteFantasyBuildings();
     this.placeDecorations();
-    this.placeTrees();
     this.placeMilitaryCamp();
-    this.spawnVillageAnimals();
 
     // ── Player ──────────────────────────────────────────
-    const isFirstLogin = playerData?.firstLogin !== false;
-    const spawnPos = isFirstLogin ? this.spawnNewGame : this.spawnDefault;
+    // Phase 1: Use localStorage flags for tutorial progression
+    const isFirstVisit = typeof window !== 'undefined' && !localStorage.getItem('midforge_first_visit');
+    const isFirstLogin = isFirstVisit || (playerData?.firstLogin !== false);
+    const spawnPos = isFirstVisit
+      ? { x: INTRO.northGateSpawn.x, y: INTRO.northGateSpawn.y } // north gate for cinematic
+      : isFirstLogin ? this.spawnNewGame : this.spawnDefault;
 
     // Resolve sprite: prefer Cute Fantasy → LPC 64×64 → 16×16 Kenney fallback
     this.useCuteFantasy = this.textures.exists('cf_player');
@@ -364,6 +420,18 @@ export class WorldScene extends Phaser.Scene {
     this.wasd = this.input.keyboard!.addKeys('W,S,A,D') as Record<string, Phaser.Input.Keyboard.Key>;
     this.interactKey = this.input.keyboard!.addKey('E');
 
+    // ── Inventory key (I) ──
+    this.input.keyboard!.addKey('I').on('down', () => {
+      if (!this.inputEnabled || this.introActive) return;
+      if (this.scene.isActive('InventoryScene')) {
+        this.scene.stop('InventoryScene');
+        this.scene.resume('WorldScene');
+      } else {
+        this.scene.pause('WorldScene');
+        this.scene.launch('InventoryScene', { characterData: this.characterData });
+      }
+    });
+
     // ── Mobile controls (React-driven via CustomEvents) ───
     this.isMobile = this.registry.get('isMobile') === true;
     if (this.isMobile) {
@@ -379,6 +447,26 @@ export class WorldScene extends Phaser.Scene {
       color: TIER_COLORS[this.playerTier] || '#ffffff',
     }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
 
+    // ── Character Visual System (6-layer renderer) ────
+    const visualTier = (this.playerTier?.toUpperCase() ?? 'VILLAGER') as VisualTier;
+    this.characterData = {
+      ...DEFAULT_CHARACTER_DATA,
+      userId: playerData?.id ?? '',
+      username: username,
+      level: playerData?.level ?? 1,
+      xp: playerData?.xp ?? 0,
+      gold: playerData?.gold ?? 0,
+      tier: visualTier in TIER_CONFIG ? visualTier : 'VILLAGER',
+      xFollowers: playerData?.xFollowers ?? 0,
+    };
+    this.playerCharacter = new PlayerCharacter(this, spawnPos.x, spawnPos.y, this.characterData, {
+      useCuteFantasy: this.useCuteFantasy,
+    });
+    // Hide the PlayerCharacter's own base sprite — the physics sprite handles animation
+    this.playerCharacter.baseSprite.setVisible(false);
+    // The PlayerCharacter manages its own shadow/glow/label, but keep the old ones
+    // as primary since they're referenced everywhere. The PC layers overlay on top.
+
     // ── Interaction Prompt ──────────────────────────────
     this.npcPromptLabel = this.add.text(0, 0, '', TEXT_STYLES.interactPrompt)
       .setOrigin(0.5).setDepth(100).setVisible(false);
@@ -389,7 +477,9 @@ export class WorldScene extends Phaser.Scene {
       .setScrollFactor(0).setDepth(100);
 
     // ── Decide: intro sequence or normal play ───────────
-    if (isFirstLogin) {
+    if (isFirstVisit) {
+      this.startCinematicArrival(username);
+    } else if (isFirstLogin) {
       this.startIntroSequence(username);
     } else {
       this.inputEnabled = true;
@@ -435,6 +525,42 @@ export class WorldScene extends Phaser.Scene {
     // ── Shooting Star — silent random event ──
     this.initShootingStar();
 
+    // ── Phase A: Initialize SoundManager (synthesized SFX) ──
+    SoundManager.init();
+
+    // ── Phase A.4: Ambient sound loop (birds, campfire, water) ──
+    this.ambientSoundTimer = this.time.addEvent({
+      delay: 8000 + Math.random() * 6000,
+      loop: true,
+      callback: () => {
+        if (!this.player) return;
+        // Pick ambient sound based on player position
+        const px = this.player.x;
+        const py = this.player.y;
+        // Near campfire zone (plaza center ~500, 500)
+        if (Math.abs(px - 500) < 80 && Math.abs(py - 500) < 80) {
+          SoundManager.play('ambient_campfire');
+        }
+        // Near forest edges (border zones)
+        else if (py < 80 || py > 950 || px < 80 || px > 950) {
+          SoundManager.play('ambient_water');
+        }
+        // Default: bird chirps
+        else {
+          SoundManager.play('ambient_bird');
+        }
+      },
+    });
+
+    // ── Phase B.1: Welcome Chest (first login only) ──
+    if (isFirstLogin) {
+      this.spawnWelcomeChest(spawnPos);
+    }
+
+    // ── Phase 1: Tutorial NPCs ──
+    this.spawnGatekeeper();
+    this.spawnTutorialBrigand();
+
     this.connectMultiplayer(playerData);
 
     // ── Dungeon exit handler — resume WorldScene when DungeonScene exits ──
@@ -442,7 +568,20 @@ export class WorldScene extends Phaser.Scene {
       this.scene.resume('WorldScene');
       this.cameras.main.fadeIn(400, 0, 0, 0);
       this.inputEnabled = true;
-      // Resume village music
+      if (this.musicManager) this.musicManager.playZoneMusic('village');
+    });
+
+    // ── Interior exit handler — resume WorldScene when any interior scene exits ──
+    this.game.events.on('interior_exit', (data: { returnX: number; returnY: number }) => {
+      this.scene.resume('WorldScene');
+      this.cameras.main.fadeIn(400, 0, 0, 0);
+      if (this.player && data.returnX != null) {
+        this.player.setPosition(data.returnX, data.returnY);
+        if (this.playerShadow) this.playerShadow.setPosition(data.returnX, data.returnY + 18);
+        if (this.playerGlow) this.playerGlow.setPosition(data.returnX, data.returnY + 18);
+        this.nameLabel.setPosition(data.returnX, data.returnY - (this.useCuteFantasy ? 36 : 12));
+      }
+      this.inputEnabled = true;
       if (this.musicManager) this.musicManager.playZoneMusic('village');
     });
 
@@ -587,106 +726,90 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  GROUND LAYER — render tile-by-tile from .tmj data
+  //  TILE LAYERS — render all tilelayers from the new 64×64 map
   // ═══════════════════════════════════════════════════════════
-  // GIDs 1-4 are base grass tiles; anything else is a decoration overlay
-  private static readonly GRASS_GIDS = new Set([1, 2, 3, 4]);
-  private static readonly DEFAULT_GRASS_GID = 4; // most common grass
+  // Layer depth mapping: Ground=0, Paths=1, Buildings=2, Forest=2
+  private static readonly LAYER_DEPTHS: Record<string, number> = {
+    Ground: 0, Paths: 1, Buildings: 2, Forest: 2,
+  };
 
-  private renderGroundLayer(map: TmjMap) {
-    const layer = map.layers.find(l => l.name === 'Ground' && l.type === 'tilelayer') as TmjTileLayer | undefined;
-    if (!layer) return;
-
-    this.groundData = layer.data;
+  private renderAllTileLayers(map: TmjMap) {
     const ts = map.tilewidth;
     const townKey = TILESHEET_TOWN.key;
     const cols = map.width;
 
-    for (let i = 0; i < layer.data.length; i++) {
-      const gid = layer.data[i];
-      if (gid === 0) continue;
+    // Render each visible tilelayer (skip Collision — handled separately)
+    for (const layer of map.layers) {
+      if (layer.type !== 'tilelayer') continue;
+      if (layer.name === 'Collision') continue;
+      const tileLayer = layer as TmjTileLayer;
+      const depth = WorldScene.LAYER_DEPTHS[layer.name] ?? 0;
 
-      const c = i % cols;
-      const r = Math.floor(i / cols);
-      const px = c * ts + ts / 2;
-      const py = r * ts + ts / 2;
+      for (let i = 0; i < tileLayer.data.length; i++) {
+        const gid = tileLayer.data[i];
+        if (gid === 0) continue;
 
-      const localId = gid - FIRSTGID_TOWN;
+        const c = i % cols;
+        const r = Math.floor(i / cols);
+        const px = c * ts + ts / 2;
+        const py = r * ts + ts / 2;
+        const localId = gid - FIRSTGID_TOWN;
 
-      if (WorldScene.GRASS_GIDS.has(gid)) {
-        // Base grass — render at depth 0
-        this.add.image(px, py, townKey, localId).setDepth(0);
-      } else {
-        // Decoration tile (trees, water, etc.) — render grass underneath first
-        const grassLocalId = WorldScene.DEFAULT_GRASS_GID - FIRSTGID_TOWN;
-        this.add.image(px, py, townKey, grassLocalId).setDepth(0);
-        // Overlay the decoration on top at depth 2 (above grass, below NPCs/player)
-        this.add.image(px, py, townKey, localId).setDepth(2);
+        this.add.image(px, py, townKey, localId).setDepth(depth);
+      }
+
+      // Store Ground data for footstep detection
+      if (layer.name === 'Ground') {
+        this.groundData = tileLayer.data;
       }
     }
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  COLLISION LAYER — create physics bodies from objects
+  //  COLLISION LAYER — tile-based collision from Collision tilelayer
   // ═══════════════════════════════════════════════════════════
-  // Collision objects to SKIP — these should not block the player at all
-  private static readonly SKIP_COLLISION = new Set([
-    'forest_nw', 'forest_ne', 'pond',
-    'future_mines_gate', 'future_harbor_wall', 'future_academy_wall',
-    'arena_gate_w', 'arena_gate_e',
-  ]);
-
-  // Buildings: only block the back wall/roof, leaving entrance open for NPC approach
-  // Format: { dx, dy, dw, dh } — applied as offsets to original rect
-  private static readonly SHRINK_COLLISION: Record<string, { dx: number; dy: number; dw: number; dh: number }> = {
-    blacksmith:    { dx: 8, dy: 0, dw: -16, dh: -80 },   // only top 48px of 128h
-    marketplace:   { dx: 8, dy: 0, dw: -16, dh: -128 },  // only top 64px of 192h
-    tavern:        { dx: 8, dy: 0, dw: -16, dh: -96 },   // only top 48px of 144h
-    elder_house:   { dx: 8, dy: 0, dw: -16, dh: -80 },   // only top 48px of 128h
-    castle_gate:   { dx: 16, dy: 0, dw: -32, dh: -48 },  // only top 64px of 112h
-  };
-
+  // In the new 64×64 map, Collision is a tilelayer where GID > 0 = solid
   private renderCollisionLayer(map: TmjMap) {
-    const layer = map.layers.find(l => l.name === 'Collision' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    const layer = map.layers.find(l => l.name === 'Collision' && l.type === 'tilelayer') as TmjTileLayer | undefined;
     if (!layer) return;
 
-    for (const obj of layer.objects) {
-      // Skip decorative collision (trees, ponds, future gates)
-      if (WorldScene.SKIP_COLLISION.has(obj.name)) continue;
+    const ts = map.tilewidth;
+    const cols = map.width;
 
-      let x = obj.x;
-      let y = obj.y;
-      let w = obj.width;
-      let h = obj.height;
+    for (let i = 0; i < layer.data.length; i++) {
+      const gid = layer.data[i];
+      if (gid === 0) continue; // passable
 
-      // Shrink building collision rects so players can approach NPCs
-      const shrink = WorldScene.SHRINK_COLLISION[obj.name];
-      if (shrink) {
-        x += shrink.dx;
-        y += shrink.dy;
-        w += shrink.dw;
-        h += shrink.dh;
-      }
+      const c = i % cols;
+      const r = Math.floor(i / cols);
+      const cx = c * ts + ts / 2;
+      const cy = r * ts + ts / 2;
 
-      const cx = x + w / 2;
-      const cy = y + h / 2;
       const wall = this.physics.add.staticImage(cx, cy, '__DEFAULT');
       wall.setVisible(false).setDepth(0);
       const b = wall.body as Phaser.Physics.Arcade.Body;
-      b.setSize(w, h);
-      b.setOffset(-w / 2, -h / 2);
+      b.setSize(ts, ts);
+      b.setOffset(-ts / 2, -ts / 2);
       this.walls.add(wall);
     }
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  SPAWN POINTS — read from SpawnPoints layer
+  //  SPAWN POINTS — read from Spawns layer (new 64×64 map)
   // ═══════════════════════════════════════════════════════════
   private parseSpawnPoints(map: TmjMap) {
-    const layer = map.layers.find(l => l.name === 'SpawnPoints' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    // Try new "Spawns" layer first, fall back to old "SpawnPoints"
+    const layer = (map.layers.find(l => l.name === 'Spawns' && l.type === 'objectgroup')
+      ?? map.layers.find(l => l.name === 'SpawnPoints' && l.type === 'objectgroup')) as TmjObjectLayer | undefined;
     if (!layer) return;
 
     for (const obj of layer.objects) {
+      // New format: type="player_spawn", name="PlayerSpawn"
+      if (obj.type === 'player_spawn' || obj.name === 'PlayerSpawn') {
+        this.spawnDefault = { x: obj.x + 8, y: obj.y + 8 };
+        this.spawnNewGame = { x: obj.x + 8, y: obj.y + 8 };
+      }
+      // Old format fallback
       if (obj.name === 'player_default') {
         this.spawnDefault = { x: obj.x + 8, y: obj.y + 8 };
       } else if (obj.name === 'player_new_game') {
@@ -696,20 +819,49 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  NPCs — spawn from map objects, use sprite property string
+  //  NPCs — spawn from Spawns or NPCs object layer
   // ═══════════════════════════════════════════════════════════
+
+  // Map spawn names from new 64×64 map → NPC config
+  private static readonly NPC_SPAWN_CONFIG: Record<string, { sprite: string; npcType: string; dialogue: string; wandering?: boolean }> = {
+    Tavernkeeper:  { sprite: 'villager', npcType: 'tavern',       dialogue: 'Welcome to the tavern, traveler!' },
+    GoldbagMarket: { sprite: 'merchant', npcType: 'marketplace',  dialogue: 'Looking to buy or sell?' },
+    ChurchElder:   { sprite: 'elder',    npcType: 'quest_giver',  dialogue: 'Ah, young one. I have tasks for the worthy.' },
+    Blacksmith:    { sprite: 'guard',    npcType: 'inventory',    dialogue: 'Need something forged?' },
+    ArenaKeeper:   { sprite: 'warrior',  npcType: 'arena',        dialogue: 'Ready to fight, challenger?' },
+    Villager1:     { sprite: 'villager', npcType: 'ambient',      dialogue: 'Beautiful day in the village!', wandering: true },
+    Villager2:     { sprite: 'villager', npcType: 'ambient',      dialogue: 'Have you visited the arena yet?', wandering: true },
+    Villager3:     { sprite: 'villager', npcType: 'ambient',      dialogue: 'The elder has quests for brave souls.', wandering: true },
+  };
+
   private spawnNpcsFromMap(map: TmjMap) {
+    // Try old NPCs layer first, then fall back to reading npc_spawn objects from Spawns layer
     const layer = map.layers.find(l => l.name === 'NPCs' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
-    if (!layer) return;
+    const spawnsLayer = map.layers.find(l => l.name === 'Spawns' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+
+    // Build combined NPC list from either source
+    const npcObjects: TmjObject[] = [];
+    if (layer) {
+      npcObjects.push(...layer.objects);
+    }
+    if (spawnsLayer) {
+      // Add npc_spawn objects from the Spawns layer (new map format)
+      for (const obj of spawnsLayer.objects) {
+        if (obj.type === 'npc_spawn') npcObjects.push(obj);
+      }
+    }
+    if (npcObjects.length === 0) return;
 
     const dungeonKey = TILESHEET_DUNGEON.key;
 
-    for (const obj of layer.objects) {
-      const spriteName = getProp(obj, 'sprite') ?? 'villager';
-      const npcType = getProp(obj, 'npcType') ?? 'ambient';
-      const dialogue = getProp(obj, 'dialogue') ?? '';
+    for (const obj of npcObjects) {
+      // Resolve NPC config: prefer custom properties (old format), fall back to spawn name mapping (new format)
+      const spawnCfg = WorldScene.NPC_SPAWN_CONFIG[obj.name];
+      const spriteName = getProp(obj, 'sprite') ?? spawnCfg?.sprite ?? 'villager';
+      const npcType = getProp(obj, 'npcType') ?? spawnCfg?.npcType ?? 'ambient';
+      const dialogue = getProp(obj, 'dialogue') ?? spawnCfg?.dialogue ?? '';
       const tierRequired = getProp(obj, 'tierRequired') ?? '';
-      const wandering = getProp(obj, 'wandering') ?? false;
+      const wandering = getProp(obj, 'wandering') ?? spawnCfg?.wandering ?? false;
 
       const px = obj.x + 8;
       const py = obj.y + 8;
@@ -1085,17 +1237,17 @@ export class WorldScene extends Phaser.Scene {
   //  BUILDINGS — place Cute Fantasy building sprites at collision coords
   // ═══════════════════════════════════════════════════════════
   private placeCuteFantasyBuildings() {
-    // Building placement: texture key → collision box center-bottom position
-    // Buildings are anchored bottom-center on the collision box, rendered at 2x
+    // Building placement for new 64×64 map (1024×1024px)
+    // Buildings anchored bottom-center, rendered at 2x
     const buildings: { key: string; cx: number; by: number; depth?: number }[] = [
-      // tavern → Inn_Blue (collision: x:704 y:672 w:176 h:144)
-      { key: 'cf_inn', cx: 704 + 88, by: 672 + 144 },
-      // blacksmith (collision: x:320 y:432 w:160 h:128)
-      { key: 'cf_blacksmith', cx: 320 + 80, by: 432 + 128 },
-      // marketplace (collision: x:800 y:432 w:176 h:192)
-      { key: 'cf_market', cx: 800 + 88, by: 432 + 192 },
-      // elder_house → Church (collision: x:992 y:448 w:144 h:128)
-      { key: 'cf_church', cx: 992 + 72, by: 448 + 128 },
+      // Inn/Tavern at tile (40,28) → pixel center ~(648, 480)
+      { key: 'cf_inn', cx: 648, by: 480 },
+      // Blacksmith at tile (10,48) → pixel center ~(168, 800)
+      { key: 'cf_blacksmith', cx: 168, by: 800 },
+      // Market at tile (6,28) → pixel center ~(104, 480)
+      { key: 'cf_market', cx: 104, by: 480 },
+      // Church/Elder at tile (10,6) → pixel center ~(168, 128)
+      { key: 'cf_church', cx: 168, by: 128 },
     ];
 
     for (const b of buildings) {
@@ -1106,14 +1258,14 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(b.depth ?? 3); // behind NPCs & player
     }
 
-    // Windmill (place at an open area near village edge, ~200, 300)
+    // Windmill at tile (47,6) → pixel ~(760, 128)
     if (this.textures.exists('cf_windmill')) {
-      this.add.image(200, 350, 'cf_windmill')
+      this.add.image(760, 128, 'cf_windmill')
         .setOrigin(0.5, 1).setScale(2).setDepth(3);
 
       // Animated sail overlay on top of windmill
       if (this.textures.exists('cf_windmill_sail')) {
-        const sail = this.add.sprite(200, 280, 'cf_windmill_sail')
+        const sail = this.add.sprite(760, 60, 'cf_windmill_sail')
           .setScale(2).setDepth(4);
         if (this.anims.exists('cf_windmill_sail_anim')) sail.play('cf_windmill_sail_anim');
       }
@@ -1131,49 +1283,49 @@ export class WorldScene extends Phaser.Scene {
       if (this.anims.exists(animKey)) s.play(animKey);
     };
 
-    // Scattered flowers near paths and buildings
+    // Scattered flowers near paths and buildings (new 64×64 map — plaza area)
     const flowerSpots = [
-      { x: 360, y: 580 }, { x: 420, y: 560 }, { x: 500, y: 590 },
-      { x: 750, y: 650 }, { x: 850, y: 600 }, { x: 680, y: 480 },
+      { x: 440, y: 480 }, { x: 560, y: 480 }, { x: 500, y: 540 },
+      { x: 620, y: 440 }, { x: 380, y: 440 }, { x: 500, y: 420 },
     ];
     flowerSpots.forEach((pos, i) => {
       const fi = (i % 3) + 1;
       placeAnim(`cf_flower_${fi}`, `cf_flower_${fi}_anim`, pos.x, pos.y);
     });
 
-    // Potted flowers near inn and market entrances
+    // Potted flowers near inn and market entrances (new map positions)
     const pottedSpots = [
-      { x: 770, y: 815 }, { x: 810, y: 815 }, // near tavern door
-      { x: 830, y: 625 }, // near market
+      { x: 630, y: 470 }, { x: 660, y: 470 }, // near inn
+      { x: 120, y: 470 }, // near market
     ];
     pottedSpots.forEach((pos, i) => {
       const fi = (i % 2) + 1;
       placeAnim(`cf_flower_pot_${fi}`, `cf_flower_pot_${fi}_anim`, pos.x, pos.y);
     });
 
-    // Campfire near village center
-    placeAnim('cf_campfire', 'cf_campfire_anim', 620, 600, 2, 5);
+    // Campfire near village plaza center
+    placeAnim('cf_campfire', 'cf_campfire_anim', 530, 530, 2, 5);
 
-    // Torches along paths
+    // Torches along paths (new map — along N-S and E-W paths)
     const torchSpots = [
-      { x: 540, y: 500 }, { x: 660, y: 500 },
-      { x: 450, y: 700 }, { x: 900, y: 700 },
+      { x: 480, y: 400 }, { x: 540, y: 400 },
+      { x: 400, y: 500 }, { x: 620, y: 500 },
     ];
     torchSpots.forEach(pos => {
       placeAnim('cf_torch', 'cf_torch_anim', pos.x, pos.y, 2, 5);
     });
 
-    // Small torches near buildings
+    // Small torches near buildings (new map positions)
     const smallTorchSpots = [
-      { x: 340, y: 430 }, { x: 480, y: 430 }, // blacksmith
-      { x: 700, y: 670 }, { x: 880, y: 670 }, // tavern area
+      { x: 150, y: 790 }, { x: 190, y: 790 }, // blacksmith
+      { x: 630, y: 450 }, { x: 670, y: 450 }, // inn area
     ];
     smallTorchSpots.forEach(pos => {
       placeAnim('cf_torch_small', 'cf_torch_small_anim', pos.x, pos.y, 2, 5);
     });
 
-    // Fountain in village square
-    placeAnim('cf_fountain', 'cf_fountain_anim', 620, 500, 2, 5);
+    // Fountain at plaza center — tile (31,31) = pixel (496,496)
+    placeAnim('cf_fountain', 'cf_fountain_anim', 496, 496, 2, 5);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1364,8 +1516,8 @@ export class WorldScene extends Phaser.Scene {
   //  MILITARY CAMP — decorative zone east of the arena
   // ═══════════════════════════════════════════════════════════
   private placeMilitaryCamp() {
-    // Camp center: ~780, 980 (east of arena area)
-    const cx = 780, cy = 980;
+    // Camp center: near arena at tile (46,47) → pixel ~(780, 780)
+    const cx = 780, cy = 780;
     const placeImg = (key: string, x: number, y: number, scale = 2, depth = 3) => {
       if (!this.textures.exists(key)) return;
       this.add.image(x, y, key).setScale(scale).setDepth(depth);
@@ -1484,6 +1636,93 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  ANIMALS — data-driven from Spawns layer (animal_spawn type)
+  // ═══════════════════════════════════════════════════════════
+  private spawnAnimalsFromMap(map: TmjMap) {
+    const spawnsLayer = map.layers.find(l => l.name === 'Spawns' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    if (!spawnsLayer) {
+      // Fallback to old hardcoded animals
+      this.spawnVillageAnimals();
+      return;
+    }
+
+    const animalSpawns = spawnsLayer.objects.filter(o => o.type === 'animal_spawn');
+    if (animalSpawns.length === 0) {
+      this.spawnVillageAnimals();
+      return;
+    }
+
+    let duckIdx = 0;
+    let horseIdx = 0;
+
+    for (const spawn of animalSpawns) {
+      const px = spawn.x + 8;
+      const py = spawn.y + 8;
+      const name = spawn.name.toLowerCase();
+
+      if (name.startsWith('duck')) {
+        duckIdx++;
+        const key = `cf_duck_${((duckIdx - 1) % 4) + 1}`;
+        if (!this.textures.exists(key)) continue;
+        const duck = this.add.sprite(px, py, key).setScale(1.5).setDepth(6);
+        if (this.anims.exists(`${key}_idle`)) duck.play(`${key}_idle`);
+        this.duckWander(duck, px, py);
+      } else if (name.startsWith('horse')) {
+        horseIdx++;
+        const key = `cf_horse_${((horseIdx - 1) % 2) + 1}`;
+        if (!this.textures.exists(key)) continue;
+        const horse = this.add.sprite(px, py, key).setScale(1.5).setDepth(6);
+        if (this.anims.exists(`${key}_idle`)) horse.play(`${key}_idle`);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  TREES — data-driven from Trees object layer
+  // ═══════════════════════════════════════════════════════════
+
+  // Map TMX tree names → existing tree texture keys
+  private static readonly TREE_NAME_MAP: Record<string, string> = {
+    'Big_Oak':       'tree_big_oak',
+    'Medium_Oak':    'tree_med_oak',
+    'Small_Oak':     'tree_small_oak',
+    'Big_Birch':     'tree_big_birch',
+    'Medium_Birch':  'tree_med_birch',
+    'Small_Birch':   'tree_small_birch',
+    'Big_Spruce':    'tree_big_spruce',
+    'Medium_Spruce': 'tree_med_spruce',
+    'Small_Spruce':  'tree_small_spruce',
+    'Small_Fruit':   'tree_small_fruit',
+    'Medium_Fruit':  'tree_med_fruit',
+    'Big_Fruit':     'tree_big_fruit',
+  };
+
+  private placeTreesFromMap(map: TmjMap) {
+    const treesLayer = map.layers.find(l => l.name === 'Trees' && l.type === 'objectgroup') as TmjObjectLayer | undefined;
+    if (!treesLayer) {
+      // Fallback to old hardcoded tree placement
+      this.placeTrees();
+      return;
+    }
+
+    const SCALE = 2;
+
+    for (const treeObj of treesLayer.objects) {
+      const textureKey = WorldScene.TREE_NAME_MAP[treeObj.name];
+      if (!textureKey) continue;
+      if (!this.textures.exists(textureKey)) continue;
+
+      // Trees are anchored bottom-center, depth-sorted by Y
+      const px = treeObj.x + treeObj.width / 2;
+      const py = treeObj.y + treeObj.height; // bottom of the object rect
+      const s = this.add.sprite(px, py, textureKey);
+      s.setScale(SCALE);
+      s.setOrigin(0.5, 1); // bottom-center anchor
+      s.setDepth(py);       // Y-sort depth
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  MAP TRANSITION — check player overlap with transition zones
   // ═══════════════════════════════════════════════════════════
   private lastTransitionTime = 0;
@@ -1565,7 +1804,852 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  INTRO SEQUENCE (Phase A)
+  //  PHASE 1 — CINEMATIC ARRIVAL (first visit only)
+  // ═══════════════════════════════════════════════════════════
+  private async startCinematicArrival(_username: string) {
+    this.introActive = true;
+    this.inputEnabled = false;
+
+    const cam = this.cameras.main;
+    const cameraZoom = cam.zoom; // base zoom from map property (2.5)
+    const ts = TILE_SIZE;
+
+    // 1. Hide player initially, black screen
+    this.player.setAlpha(0);
+    if (this.playerShadow) this.playerShadow.setAlpha(0);
+    if (this.playerGlow) this.playerGlow.setAlpha(0);
+    this.nameLabel.setAlpha(0);
+
+    // Black overlay for cinematic text
+    const overlay = this.add.rectangle(cam.width / 2, cam.height / 2, cam.width, cam.height, 0x000000, 1)
+      .setScrollFactor(0).setDepth(900);
+
+    // 2. Show cinematic text lines one at a time
+    const lineTexts: Phaser.GameObjects.Text[] = [];
+    const lineY = cam.height / 2 - 30;
+
+    for (let i = 0; i < INTRO.cinematicLines.length; i++) {
+      const txt = this.add.text(cam.width / 2, lineY + i * 28, INTRO.cinematicLines[i], {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: '12px',
+        color: '#FFFFFF',
+        align: 'center',
+        resolution: 4,
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
+      lineTexts.push(txt);
+    }
+
+    // Fade in each line sequentially
+    for (let i = 0; i < lineTexts.length; i++) {
+      await this.wait(i === 0 ? INTRO.cinematicFadeMs : INTRO.cinematicLinePause);
+      this.tweens.add({ targets: lineTexts[i], alpha: 1, duration: INTRO.cinematicFadeMs, ease: 'Power2' });
+    }
+
+    // Hold final line
+    await this.wait(2000);
+
+    // 3. Fade out all text
+    this.tweens.add({ targets: lineTexts, alpha: 0, duration: INTRO.cinematicFadeMs, ease: 'Power2' });
+    await this.wait(INTRO.cinematicFadeMs);
+
+    // 4. Fade out black overlay — reveal the world
+    // Set camera to tight zoom on player at north gate
+    cam.setZoom(INTRO.zoomStart * cameraZoom);
+
+    this.tweens.add({ targets: overlay, alpha: 0, duration: INTRO.cinematicFadeMs * 2, ease: 'Power2' });
+    await this.wait(INTRO.cinematicFadeMs);
+
+    // Show player sprite facing south
+    this.player.setAlpha(1);
+    if (this.playerShadow) this.playerShadow.setAlpha(1);
+    if (this.playerGlow) this.playerGlow.setAlpha(0.35);
+    this.nameLabel.setAlpha(1);
+    if (this.useCuteFantasy) {
+      this.player.play('cf_player_idle_down', true);
+    }
+
+    await this.wait(500);
+
+    // 5. Camera slowly pans back to normal zoom
+    this.tweens.add({
+      targets: cam,
+      zoom: INTRO.zoomEnd * cameraZoom,
+      duration: INTRO.zoomDuration,
+      ease: 'Sine.easeInOut',
+    });
+    await this.wait(INTRO.zoomDuration);
+
+    // 6. Scripted walk: player walks 3 tiles south
+    const walkDist = INTRO.scriptedWalkTiles * ts;
+    const walkDuration = (walkDist / INTRO.scriptedWalkSpeed) * 1000;
+    const targetY = this.player.y + walkDist;
+
+    // Play walk animation
+    if (this.useCuteFantasy) {
+      this.player.play('cf_player_walk_down', true);
+    }
+
+    this.tweens.add({
+      targets: this.player,
+      y: targetY,
+      duration: walkDuration,
+      ease: 'Linear',
+      onUpdate: () => {
+        // Keep shadow, glow, label synced
+        if (this.playerShadow) this.playerShadow.setPosition(this.player.x, this.player.y + 18);
+        if (this.playerGlow) this.playerGlow.setPosition(this.player.x, this.player.y + 18);
+        this.nameLabel.setPosition(this.player.x, this.player.y - (this.useCuteFantasy ? 36 : 12));
+      },
+    });
+    await this.wait(walkDuration);
+
+    // 7. Player stops, idle animation
+    if (this.useCuteFantasy) {
+      this.player.play('cf_player_idle_down', true);
+    }
+    this.lastDirection = 'down';
+
+    // 8. Set localStorage flag and enable input
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('midforge_first_visit', 'true');
+    }
+
+    // Clean up overlay and text
+    overlay.destroy();
+    lineTexts.forEach(t => t.destroy());
+
+    this.introActive = false;
+    this.inputEnabled = true;
+
+    // Emit world_ready
+    this.game.events.emit('world_ready');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PHASE 1 — GATEKEEPER NPC
+  // ═══════════════════════════════════════════════════════════
+  private spawnGatekeeper() {
+    // Only spawn if tutorial not yet done
+    if (typeof window !== 'undefined' && localStorage.getItem('midforge_tutorial_done')) return;
+
+    const pos = WorldScene.GATEKEEPER_POS;
+    const cfKey = 'cf_npc_Farmer_Bob';
+    const useCF = this.textures.exists(cfKey);
+
+    if (useCF) {
+      this.gatekeeperSprite = this.add.sprite(pos.x, pos.y, cfKey).setScale(2).setDepth(8);
+      const idleKey = `${cfKey}_idle_down`;
+      if (this.anims.exists(idleKey)) this.gatekeeperSprite.play(idleKey);
+      this.gatekeeperShadow = this.add.ellipse(pos.x, pos.y + 12, 20, 5, 0x000000, 0.35).setDepth(7);
+    } else {
+      // Fallback: Kenney sprite
+      this.gatekeeperSprite = this.add.sprite(pos.x, pos.y, TILESHEET_DUNGEON.key, NPC_SPRITE_NAMES.villager).setDepth(8) as any;
+    }
+
+    this.gatekeeperLabel = this.add.text(pos.x, pos.y - (useCF ? 24 : 14), 'GATEKEEPER', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '5px',
+      color: '#FFB800', stroke: '#000000', strokeThickness: 3, resolution: 4,
+    }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
+  }
+
+  private async triggerGatekeeperDialogue() {
+    if (this.gatekeeperTriggered || !this.gatekeeperSprite || !this.player) return;
+    this.gatekeeperTriggered = true;
+    this.inputEnabled = false;
+    this.introActive = true;
+
+    const gk = this.gatekeeperSprite;
+    const cfKey = 'cf_npc_Farmer_Bob';
+    const useCF = this.textures.exists(cfKey);
+
+    // Gatekeeper walks toward player
+    const targetX = this.player.x;
+    const targetY = this.player.y - (useCF ? 40 : 20); // stop 1 tile north
+    const dist = Phaser.Math.Distance.Between(gk.x, gk.y, targetX, targetY);
+    const walkDuration = (dist / 40) * 1000;
+
+    if (useCF) {
+      const walkKey = `${cfKey}_walk_down`;
+      if (this.anims.exists(walkKey)) gk.play(walkKey);
+    }
+
+    this.tweens.add({
+      targets: gk,
+      x: targetX, y: targetY,
+      duration: walkDuration, ease: 'Linear',
+      onUpdate: () => {
+        if (this.gatekeeperLabel) this.gatekeeperLabel.setPosition(gk.x, gk.y - (useCF ? 24 : 14));
+        if (this.gatekeeperShadow) this.gatekeeperShadow.setPosition(gk.x, gk.y + 12);
+      },
+    });
+    await this.wait(walkDuration);
+
+    // Gatekeeper stops, faces player (idle)
+    if (useCF) {
+      const idleKey = `${cfKey}_idle_down`;
+      if (this.anims.exists(idleKey)) gk.play(idleKey);
+    }
+
+    // Show Phase 1 styled dialogue box
+    const dialogueLines = [
+      { speaker: 'GATEKEEPER', text: 'Hold. New face in Midforge.' },
+      { speaker: 'GATEKEEPER', text: 'The streets aren\'t safe tonight. A Brigand was spotted near the market.' },
+      { speaker: 'GATEKEEPER', text: 'You\'ll need this.' },
+      { speaker: 'SYSTEM', text: '\u2694 Starter Sword equipped. (+5 ATK)' },
+      { speaker: 'GATEKEEPER', text: 'The Arena is south-east. Prove yourself there.' },
+      { speaker: 'GATEKEEPER', text: 'Everyone starts somewhere.' },
+    ];
+
+    await this.showStyledDialogue(dialogueLines, gk);
+
+    // Award starter sword (emit to React/inventory)
+    this.game.events.emit('equip_starter_sword');
+
+    // Gatekeeper walks back to post
+    const returnX = WorldScene.GATEKEEPER_POS.x;
+    const returnY = WorldScene.GATEKEEPER_POS.y;
+    const returnDist = Phaser.Math.Distance.Between(gk.x, gk.y, returnX, returnY);
+    const returnDuration = (returnDist / 40) * 1000;
+
+    if (useCF) {
+      const walkUpKey = `${cfKey}_walk_up`;
+      if (this.anims.exists(walkUpKey)) gk.play(walkUpKey);
+    }
+
+    this.tweens.add({
+      targets: gk, x: returnX, y: returnY,
+      duration: returnDuration, ease: 'Linear',
+      onUpdate: () => {
+        if (this.gatekeeperLabel) this.gatekeeperLabel.setPosition(gk.x, gk.y - (useCF ? 24 : 14));
+        if (this.gatekeeperShadow) this.gatekeeperShadow.setPosition(gk.x, gk.y + 12);
+      },
+    });
+    await this.wait(returnDuration);
+
+    if (useCF) {
+      const idleKey = `${cfKey}_idle_down`;
+      if (this.anims.exists(idleKey)) gk.play(idleKey);
+    }
+
+    // Set tutorial done flag
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('midforge_tutorial_done', 'true');
+    }
+
+    this.introActive = false;
+    this.inputEnabled = true;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PHASE 1 — STYLED DIALOGUE BOX
+  // ═══════════════════════════════════════════════════════════
+  private showStyledDialogue(
+    lines: { speaker: string; text: string }[],
+    _npcSprite: Phaser.GameObjects.Sprite | null,
+  ): Promise<void> {
+    return new Promise(resolve => {
+      const cam = this.cameras.main;
+      const boxH = 80;
+      const boxW = cam.width - 16;
+      const boxX = 8;
+      const boxY = cam.height - boxH - 8;
+
+      // Background
+      const bg = this.add.rectangle(boxX + boxW / 2, boxY + boxH / 2, boxW, boxH, 0x0D0D1A, 0.9)
+        .setScrollFactor(0).setDepth(600);
+      // Gold border
+      const borderTop = this.add.rectangle(boxX + boxW / 2, boxY, boxW, 2, 0xFFB800, 1)
+        .setScrollFactor(0).setDepth(601);
+      const borderBot = this.add.rectangle(boxX + boxW / 2, boxY + boxH, boxW, 2, 0xFFB800, 1)
+        .setScrollFactor(0).setDepth(601);
+      const borderLeft = this.add.rectangle(boxX, boxY + boxH / 2, 2, boxH, 0xFFB800, 1)
+        .setScrollFactor(0).setDepth(601);
+      const borderRight = this.add.rectangle(boxX + boxW, boxY + boxH / 2, 2, boxH, 0xFFB800, 1)
+        .setScrollFactor(0).setDepth(601);
+
+      // Speaker name
+      const speakerText = this.add.text(boxX + 12, boxY + 8, '', {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '10px',
+        color: '#FFB800', resolution: 4,
+      }).setScrollFactor(0).setDepth(602);
+
+      // Dialogue text
+      const dialogText = this.add.text(boxX + 12, boxY + 26, '', {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '8px',
+        color: '#FFFFFF', resolution: 4,
+        wordWrap: { width: boxW - 24 },
+      }).setScrollFactor(0).setDepth(602);
+
+      // Advance hint
+      const advanceHint = this.add.text(boxX + boxW - 12, boxY + boxH - 10, '[ TAP TO CONTINUE ]', {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '5px',
+        color: '#FFB800', resolution: 4,
+      }).setOrigin(1, 1).setScrollFactor(0).setDepth(602).setAlpha(0);
+
+      const allElements = [bg, borderTop, borderBot, borderLeft, borderRight, speakerText, dialogText, advanceHint];
+
+      let lineIndex = 0;
+      const showLine = () => {
+        if (lineIndex >= lines.length) {
+          allElements.forEach(el => el.destroy());
+          resolve();
+          return;
+        }
+
+        const line = lines[lineIndex];
+        speakerText.setText(line.speaker);
+        speakerText.setColor(line.speaker === 'SYSTEM' ? '#4A90D9' : '#FFB800');
+
+        // Typewriter effect
+        let charIndex = 0;
+        dialogText.setText('');
+        advanceHint.setAlpha(0);
+
+        const typeTimer = this.time.addEvent({
+          delay: INTRO.typewriterSpeed,
+          repeat: line.text.length - 1,
+          callback: () => {
+            charIndex++;
+            dialogText.setText(line.text.substring(0, charIndex));
+            if (charIndex >= line.text.length) {
+              advanceHint.setAlpha(0.6);
+            }
+          },
+        });
+
+        const advanceListener = () => {
+          if (charIndex < line.text.length) {
+            typeTimer.remove();
+            dialogText.setText(line.text);
+            charIndex = line.text.length;
+            advanceHint.setAlpha(0.6);
+            return;
+          }
+          this.input.keyboard!.removeKey('SPACE');
+          this.input.off('pointerdown', advanceListener);
+          lineIndex++;
+          showLine();
+        };
+        const spaceKey = this.input.keyboard!.addKey('SPACE');
+        spaceKey.on('down', advanceListener);
+        this.input.on('pointerdown', advanceListener);
+      };
+
+      showLine();
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PHASE 1 — SCRIPTED BRIGAND ENCOUNTER (Step 3)
+  // ═══════════════════════════════════════════════════════════
+  private static readonly BRIGAND_TUTORIAL_STATS = {
+    name: 'Brigand',
+    hp: 30, maxHp: 30,
+    atk: 3, def: 1,
+    xpReward: 25, goldReward: 15,
+  };
+
+  private spawnTutorialBrigand() {
+    // Only spawn if first fight not yet done
+    if (typeof window !== 'undefined' && localStorage.getItem('midforge_first_fight_done')) return;
+
+    const pos = WorldScene.BRIGAND_POS;
+    const cfKey = 'cf_npc_Farmer_Buba'; // Use Farmer_Buba as Brigand stand-in (or Goblin if loaded)
+    const goblinKey = this.textures.exists('cf_brigand') ? 'cf_brigand' : cfKey;
+    const useCF = this.textures.exists(goblinKey);
+
+    if (useCF) {
+      this.tutorialBrigandSprite = this.add.sprite(pos.x, pos.y, goblinKey).setScale(2).setDepth(8);
+      const idleKey = `${goblinKey}_idle_down`;
+      if (this.anims.exists(idleKey)) this.tutorialBrigandSprite.play(idleKey);
+    } else {
+      this.tutorialBrigandSprite = this.add.sprite(pos.x, pos.y, TILESHEET_DUNGEON.key, NPC_SPRITE_NAMES.villager).setDepth(8) as any;
+    }
+
+    // Red tint to distinguish as enemy
+    this.tutorialBrigandSprite!.setTint(0xff6666);
+
+    // Name label
+    this.add.text(pos.x, pos.y - (useCF ? 24 : 14), 'BRIGAND', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '5px',
+      color: '#FF4444', stroke: '#000000', strokeThickness: 3, resolution: 4,
+    }).setOrigin(0.5).setDepth(PLAYER_LABEL_DEPTH);
+  }
+
+  private async triggerBrigandEncounter() {
+    if (this.tutorialBrigandTriggered || !this.tutorialBrigandSprite || !this.player) return;
+    this.tutorialBrigandTriggered = true;
+    this.inputEnabled = false;
+
+    const brigand = this.tutorialBrigandSprite;
+
+    // Exclamation mark "!" above Brigand
+    this.tutorialBrigandExcl = this.add.text(brigand.x, brigand.y - 30, '!', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '16px',
+      color: '#FF4444', stroke: '#000000', strokeThickness: 4, resolution: 4,
+    }).setOrigin(0.5).setDepth(200);
+
+    this.tweens.add({
+      targets: this.tutorialBrigandExcl,
+      y: brigand.y - 45, alpha: 0,
+      duration: 1000, ease: 'Power2',
+    });
+    await this.wait(600);
+
+    // Brigand walks toward player
+    const targetX = this.player.x;
+    const targetY = this.player.y + 20; // stop just south of player
+    const dist = Phaser.Math.Distance.Between(brigand.x, brigand.y, targetX, targetY);
+    const walkDuration = (dist / 50) * 1000;
+
+    this.tweens.add({
+      targets: brigand,
+      x: targetX, y: targetY,
+      duration: walkDuration, ease: 'Linear',
+    });
+    await this.wait(walkDuration);
+
+    // Trigger battle via game event
+    const stats = WorldScene.BRIGAND_TUTORIAL_STATS;
+    this.game.events.emit('start_tutorial_battle', {
+      enemy: { ...stats },
+      onWin: () => {
+        // XP float
+        this.showXPFloat(this.player.x, this.player.y, stats.xpReward);
+        // Gold float
+        this.showGoldFloat(this.player.x, this.player.y, stats.goldReward);
+        // Despawn brigand
+        brigand.destroy();
+        if (this.tutorialBrigandExcl) this.tutorialBrigandExcl.destroy();
+        // Set flag
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('midforge_first_fight_done', 'true');
+        }
+        this.inputEnabled = true;
+      },
+      onLose: () => {
+        // Respawn at plaza center with 50% HP
+        this.player.setPosition(512, 512);
+        if (this.playerShadow) this.playerShadow.setPosition(512, 530);
+        if (this.playerGlow) this.playerGlow.setPosition(512, 530);
+        this.nameLabel.setPosition(512, this.useCuteFantasy ? 476 : 500);
+        brigand.destroy();
+        if (this.tutorialBrigandExcl) this.tutorialBrigandExcl.destroy();
+        this.inputEnabled = true;
+      },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PHASE 1 — XP FLOAT + GOLD FLOAT (Step 4)
+  // ═══════════════════════════════════════════════════════════
+  private showXPFloat(x: number, y: number, amount: number) {
+    const text = this.add.text(x, y, `+${amount} XP`, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '10px',
+      color: '#FFB800',
+      stroke: '#000000',
+      strokeThickness: 3,
+      resolution: 4,
+    }).setDepth(100).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: text,
+      y: y - 40,
+      alpha: 0,
+      duration: 1500,
+      ease: 'Power2',
+      onComplete: () => text.destroy(),
+    });
+  }
+
+  private showGoldFloat(x: number, y: number, amount: number) {
+    const text = this.add.text(x + 20, y, `+${amount}G`, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '8px',
+      color: '#F5D442',
+      stroke: '#000000',
+      strokeThickness: 3,
+      resolution: 4,
+    }).setDepth(100).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: text,
+      y: y - 35,
+      alpha: 0,
+      duration: 1500,
+      delay: 200,
+      ease: 'Power2',
+      onComplete: () => text.destroy(),
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PHASE 1 — LEVEL UP VISUAL (Step 4)
+  // ═══════════════════════════════════════════════════════════
+  public showLevelUp(newLevel: number) {
+    const cam = this.cameras.main;
+
+    // 1. White camera flash
+    cam.flash(200, 255, 255, 255);
+
+    // 2. "LEVEL UP!" text
+    const lvlText = this.add.text(cam.width / 2, cam.height / 2 - 20, 'LEVEL UP!', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '24px',
+      color: '#FFB800',
+      stroke: '#000000',
+      strokeThickness: 5,
+      resolution: 4,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+
+    const lvlNum = this.add.text(cam.width / 2, cam.height / 2 + 12, `Level ${newLevel}`, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '14px',
+      color: '#FFFFFF',
+      stroke: '#000000',
+      strokeThickness: 3,
+      resolution: 4,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+
+    // 3. Player idle at 2x speed for 1s (celebration)
+    if (this.useCuteFantasy && this.player) {
+      this.player.anims.timeScale = 2;
+      this.time.delayedCall(1000, () => {
+        if (this.player) this.player.anims.timeScale = 1;
+      });
+    }
+
+    // 4. Fade out after 2s
+    this.time.delayedCall(2000, () => {
+      this.tweens.add({
+        targets: [lvlText, lvlNum],
+        alpha: 0, duration: 500,
+        onComplete: () => { lvlText.destroy(); lvlNum.destroy(); },
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PHASE 1 — TUTORIAL PROXIMITY CHECKS (called from update)
+  // ═══════════════════════════════════════════════════════════
+  private checkTutorialTriggers() {
+    if (!this.player || this.introActive) return;
+
+    // Gatekeeper proximity check
+    if (!this.gatekeeperTriggered && this.gatekeeperSprite) {
+      const dist = Phaser.Math.Distance.Between(
+        this.player.x, this.player.y,
+        this.gatekeeperSprite.x, this.gatekeeperSprite.y
+      );
+      if (dist < WorldScene.GATEKEEPER_TRIGGER_DIST) {
+        this.triggerGatekeeperDialogue();
+      }
+    }
+
+    // Brigand proximity check (only after tutorial done)
+    if (!this.tutorialBrigandTriggered && this.tutorialBrigandSprite) {
+      const tutDone = typeof window !== 'undefined' && localStorage.getItem('midforge_tutorial_done');
+      if (tutDone) {
+        const dist = Phaser.Math.Distance.Between(
+          this.player.x, this.player.y,
+          this.tutorialBrigandSprite.x, this.tutorialBrigandSprite.y
+        );
+        if (dist < WorldScene.BRIGAND_TRIGGER_DIST) {
+          this.triggerBrigandEncounter();
+        }
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  CHARACTER VISUAL SYSTEM — EQUIP + STAT FLASH
+  // ═══════════════════════════════════════════════════════════
+
+  public equipItem(itemId: string) {
+    const item = GEAR_CATALOG[itemId];
+    if (!item) return;
+
+    // Level check
+    if (item.levelRequired && this.characterData.level < item.levelRequired) {
+      this.showStatFlash(`Requires Lv.${item.levelRequired}`, '#FF4444');
+      return;
+    }
+
+    const oldAtk = this.characterData.atk;
+    const oldDef = this.characterData.def;
+
+    this.characterData = equipGear(this.characterData, item);
+    if (this.playerCharacter) {
+      this.playerCharacter.setCharacterData(this.characterData);
+    }
+
+    // Stat flash
+    const atkDelta = this.characterData.atk - oldAtk;
+    const defDelta = this.characterData.def - oldDef;
+    if (atkDelta > 0) this.showStatFlash(`+${atkDelta} ATK`, '#00FF88');
+    if (atkDelta < 0) this.showStatFlash(`${atkDelta} ATK`, '#FF4444');
+    if (defDelta > 0) this.showStatFlash(`+${defDelta} DEF`, '#00FF88');
+    if (defDelta < 0) this.showStatFlash(`${defDelta} DEF`, '#FF4444');
+
+    SoundManager.play('interact');
+
+    // Emit to React layer for API persistence
+    this.game.events.emit('gear_equipped', {
+      itemId: item.id,
+      slot: item.type,
+      characterData: this.characterData,
+    });
+  }
+
+  public unequipSlot(slot: 'helmet' | 'chest' | 'weapon' | 'shield' | 'boots') {
+    const oldAtk = this.characterData.atk;
+    const oldDef = this.characterData.def;
+
+    this.characterData = unequipGear(this.characterData, slot);
+    if (this.playerCharacter) {
+      this.playerCharacter.setCharacterData(this.characterData);
+    }
+
+    const atkDelta = this.characterData.atk - oldAtk;
+    const defDelta = this.characterData.def - oldDef;
+    if (atkDelta !== 0) this.showStatFlash(`${atkDelta > 0 ? '+' : ''}${atkDelta} ATK`, atkDelta > 0 ? '#00FF88' : '#FF4444');
+    if (defDelta !== 0) this.showStatFlash(`${defDelta > 0 ? '+' : ''}${defDelta} DEF`, defDelta > 0 ? '#00FF88' : '#FF4444');
+
+    this.game.events.emit('gear_unequipped', {
+      slot,
+      characterData: this.characterData,
+    });
+  }
+
+  private showStatFlash(text: string, color: string) {
+    if (!this.player) return;
+    const px = this.player.x;
+    const py = this.player.y - (this.useCuteFantasy ? 50 : 24);
+    const flash = this.add.text(px, py, text, {
+      fontFamily: '"Press Start 2P"', fontSize: '8px',
+      color, stroke: '#000000', strokeThickness: 3, resolution: 4,
+    }).setOrigin(0.5).setDepth(200);
+
+    this.tweens.add({
+      targets: flash,
+      y: py - 30,
+      alpha: 0,
+      duration: 1200,
+      ease: 'Power2',
+      onComplete: () => flash.destroy(),
+    });
+  }
+
+  public getCharacterData(): CharacterData {
+    return this.characterData;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  STEP 7 — OTHER PLAYERS ON MAP (polling)
+  // ═══════════════════════════════════════════════════════════
+  private static readonly OTHER_TIER_COLORS: Record<string, number> = {
+    villager: 0xAAAAAA, apprentice: 0x4A90D9, merchant: 0x7B68EE,
+    warrior: 0xFFB800, legend: 0xFF4500,
+  };
+  private static readonly OTHER_TIER_COLOR_STR: Record<string, string> = {
+    villager: '#AAAAAA', apprentice: '#4A90D9', merchant: '#7B68EE',
+    warrior: '#FFB800', legend: '#FF4500',
+  };
+
+  private savePlayerPosition() {
+    if (!this.player) return;
+    const now = this.time.now;
+    if (now - this.lastPositionSaveTime < WorldScene.POSITION_SAVE_MS) return;
+    this.lastPositionSaveTime = now;
+
+    const x = Math.round(this.player.x);
+    const y = Math.round(this.player.y);
+
+    fetch('/api/player/nearby', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x, y }),
+    }).then(res => res.json()).then(data => {
+      if (data.players) this.renderNearbyPlayers(data.players);
+    }).catch(() => { /* silent */ });
+  }
+
+  private pollNearbyPlayers() {
+    const now = this.time.now;
+    if (now - this.lastNearbyPollTime < WorldScene.NEARBY_POLL_MS) return;
+    this.lastNearbyPollTime = now;
+
+    fetch('/api/player/nearby').then(res => res.json()).then(data => {
+      if (data.players) this.renderNearbyPlayers(data.players);
+    }).catch(() => { /* silent */ });
+  }
+
+  private renderNearbyPlayers(players: { id: string; username: string; tier: string; level: number; positionX: number; positionY: number; equippedGear?: any }[]) {
+    const currentIds = new Set(players.map(p => p.id));
+
+    // Remove PlayerCharacter instances for players no longer nearby
+    for (const [id, obj] of this.nearbySprites) {
+      if (!currentIds.has(id)) {
+        obj.pc.destroy();
+        obj.clickZone.destroy();
+        this.nearbySprites.delete(id);
+      }
+    }
+
+    for (const p of players) {
+      const px = p.positionX ?? 512;
+      const py = p.positionY ?? 512;
+      const tier = (p.tier ?? 'villager').toUpperCase() as VisualTier;
+
+      const existing = this.nearbySprites.get(p.id);
+      if (existing) {
+        // Tween container to new position
+        this.tweens.add({
+          targets: existing.pc.container,
+          x: px, y: py, duration: 500, ease: 'Linear',
+          onUpdate: () => existing.pc.update(),
+        });
+        this.tweens.add({ targets: existing.clickZone, x: px, y: py, duration: 500, ease: 'Linear' });
+      } else {
+        // Build CharacterData for other player
+        const otherData: CharacterData = {
+          ...DEFAULT_CHARACTER_DATA,
+          userId: p.id,
+          username: p.username,
+          level: p.level ?? 1,
+          tier: tier in TIER_CONFIG ? tier : 'VILLAGER',
+          equippedGear: p.equippedGear ?? DEFAULT_CHARACTER_DATA.equippedGear,
+        };
+
+        // Create PlayerCharacter with isOtherPlayer=true (2x scale, 0.7 alpha, no input)
+        const pc = new PlayerCharacter(this, px, py, otherData, {
+          isOtherPlayer: true,
+          useCuteFantasy: this.useCuteFantasy,
+        });
+
+        // Click zone for interaction
+        const clickZone = this.add.zone(px, py, 32, 32).setInteractive({ useHandCursor: true });
+        clickZone.setDepth(pc.container.depth + 1);
+        clickZone.on('pointerdown', () => {
+          this.showOtherPlayerPopup(p);
+        });
+
+        this.nearbySprites.set(p.id, { pc, clickZone });
+      }
+    }
+  }
+
+  private showOtherPlayerPopup(player: { id: string; username: string; tier: string; level: number }) {
+    // Clear any existing popup
+    this.closeOtherPlayerPopup();
+
+    const cam = this.cameras.main;
+    const popW = 180;
+    const popH = 80;
+    const popX = cam.width / 2 - popW / 2;
+    const popY = cam.height / 2 - popH / 2;
+    const R = 4;
+    const tier = player.tier ?? 'villager';
+    const tierColorStr = WorldScene.OTHER_TIER_COLOR_STR[tier] ?? '#AAAAAA';
+
+    // Background
+    const bg = this.add.rectangle(popX + popW / 2, popY + popH / 2, popW, popH, 0x0D0D1A, 0.95)
+      .setScrollFactor(0).setDepth(800);
+    // Border
+    const border = this.add.graphics().setScrollFactor(0).setDepth(801);
+    border.lineStyle(2, WorldScene.OTHER_TIER_COLORS[tier] ?? 0xAAAAAA, 1);
+    border.strokeRect(popX, popY, popW, popH);
+
+    // Username
+    const name = this.add.text(popX + 10, popY + 8, player.username, {
+      fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#FFFFFF', resolution: R,
+    }).setScrollFactor(0).setDepth(802);
+
+    // Tier + Level
+    const tierLabel = this.add.text(popX + 10, popY + 24, `\u2694 ${tier.charAt(0).toUpperCase() + tier.slice(1)} Tier  Lv.${player.level ?? 1}`, {
+      fontFamily: '"Press Start 2P"', fontSize: '5px', color: tierColorStr, resolution: R,
+    }).setScrollFactor(0).setDepth(802);
+
+    // Challenge button
+    const btnX = popX + popW / 2;
+    const btnY = popY + popH - 18;
+    const btnBg = this.add.rectangle(btnX, btnY, 90, 18, 0x8B0000, 1)
+      .setScrollFactor(0).setDepth(803).setInteractive({ useHandCursor: true });
+    const btnTxt = this.add.text(btnX, btnY, 'CHALLENGE', {
+      fontFamily: '"Press Start 2P"', fontSize: '6px', color: '#FFFFFF', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(804);
+
+    // Close button
+    const closeX = popX + popW - 10;
+    const closeY = popY + 8;
+    const closeBtn = this.add.text(closeX, closeY, 'X', {
+      fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#FF4444', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(804).setInteractive({ useHandCursor: true });
+
+    this.nearbyPopup = [bg, border, name, tierLabel, btnBg, btnTxt, closeBtn];
+
+    btnBg.on('pointerdown', () => {
+      this.closeOtherPlayerPopup();
+      this.game.events.emit('show_player_card', {
+        username: player.username,
+        tier: player.tier,
+        mrr: 0,
+        followers: 0,
+        level: player.level,
+      });
+    });
+
+    closeBtn.on('pointerdown', () => {
+      this.closeOtherPlayerPopup();
+    });
+
+    // Auto-close after 10s
+    this.time.delayedCall(10000, () => this.closeOtherPlayerPopup());
+  }
+
+  private closeOtherPlayerPopup() {
+    for (const el of this.nearbyPopup) {
+      el.destroy();
+    }
+    this.nearbyPopup = [];
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PHASE 1 — BUILDING DOOR DETECTION (Step 5)
+  // ═══════════════════════════════════════════════════════════
+  private checkBuildingDoors() {
+    if (!this.player || this.introActive) return;
+
+    const now = this.time.now;
+    if (now - this.lastDoorTime < 2000) return; // 2s cooldown
+
+    const px = this.player.x;
+    const py = this.player.y;
+
+    for (const door of WorldScene.BUILDING_DOORS) {
+      const dx = Math.abs(px - door.x);
+      const dy = Math.abs(py - door.y);
+      if (dx < door.w && dy < door.h) {
+        this.lastDoorTime = now;
+        this.enterBuilding(door.scene, door.x, door.y);
+        return;
+      }
+    }
+  }
+
+  private enterBuilding(sceneKey: string, doorX: number, doorY: number) {
+    this.inputEnabled = false;
+    this.cameras.main.fadeOut(400, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.pause('WorldScene');
+      this.scene.launch(sceneKey, { returnX: doorX, returnY: doorY + 16 });
+      if (this.musicManager) this.musicManager.playZoneMusic('tavern');
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  INTRO SEQUENCE (Phase A — legacy)
   // ═══════════════════════════════════════════════════════════
   private startIntroSequence(username: string) {
     this.introActive = true;
@@ -1808,24 +2892,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  AUDIO
+  //  AUDIO (Phase A — synthesized SFX via SoundManager)
   // ═══════════════════════════════════════════════════════════
   private playFootstep() {
-    // Use ground tile GID to determine surface type
     const tileX = Math.floor(this.player.x / TILE_SIZE);
     const tileY = Math.floor(this.player.y / TILE_SIZE);
     const idx = tileY * this.mapCols + tileX;
     const gid = this.groundData[idx] ?? 1;
-
-    // GIDs 1-4 are grass variants, 25-26 are sand; anything else = stone path
     const isGrass = gid >= 1 && gid <= 4;
-    const prefix = isGrass ? 'footstep_grass' : 'footstep_stone';
-    const sfxIdx = Math.floor(Math.random() * 3);
-    const key = `${prefix}_${sfxIdx}`;
-
-    if (this.cache.audio.exists(key)) {
-      this.sound.play(key, { volume: 0.15 });
-    }
+    SoundManager.play(isGrass ? 'footstep_grass' : 'footstep_stone');
   }
 
   private flashScreen(color = 0xFFFFFF, duration = 200) {
@@ -1863,15 +2938,21 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private playInteractSound() {
-    if (this.cache.audio.exists('sfx_interact')) {
-      this.sound.play('sfx_interact', { volume: 0.3 });
-    }
+    SoundManager.play('interact');
   }
 
   // ═══════════════════════════════════════════════════════════
   //  UPDATE LOOP
   // ═══════════════════════════════════════════════════════════
   update(_time: number, delta: number) {
+    // Phase 1: Check tutorial triggers even when input is enabled
+    this.checkTutorialTriggers();
+    // Step 5: Check building door proximity
+    this.checkBuildingDoors();
+    // Step 7: Save position + poll nearby players
+    this.savePlayerPosition();
+    this.pollNearbyPlayers();
+
     if (!this.inputEnabled || this.introActive || !this.player || !this.cursors) return;
 
     let vx = 0;
@@ -1946,6 +3027,12 @@ export class WorldScene extends Phaser.Scene {
     }
     this.nameLabel.setPosition(this.player.x, this.player.y - (this.useCuteFantasy ? 36 : 12));
 
+    // Sync PlayerCharacter visual layers to physics sprite position
+    if (this.playerCharacter) {
+      this.playerCharacter.setPosition(this.player.x, this.player.y);
+      this.playerCharacter.update();
+    }
+
     this.sendTimer += delta;
     if (this.colyseusRoom && this.sendTimer > 66) {
       this.sendTimer = 0;
@@ -1964,6 +3051,8 @@ export class WorldScene extends Phaser.Scene {
     this.checkXpNuggetPickup();
     this.checkBrigandEncounter();
     this.checkStarLandingPickup();
+    this.checkWelcomeChest();
+    this.checkDailyChest();
 
     // Slow cloud drift
     if (this.cloudLayer) {
@@ -2250,10 +3339,8 @@ export class WorldScene extends Phaser.Scene {
     // Amber flash
     this.flashScreen(0xF39C12, 150);
 
-    // Play chime if available
-    if (this.cache.audio.exists('sfx_interact')) {
-      this.sound.play('sfx_interact', { volume: 0.25 });
-    }
+    // Play coin chime
+    SoundManager.play('coin');
 
     // Award XP via API (fire and forget)
     fetch('/api/player/award-xp', {
@@ -3163,6 +4250,274 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  PHASE B — WELCOME CHEST + QUEST BEACON
+  // ═══════════════════════════════════════════════════════════
+  private spawnWelcomeChest(spawnPos: { x: number; y: number }) {
+    const cx = spawnPos.x + 48;
+    const cy = spawnPos.y + 32;
+
+    // Gold chest rectangle (pixel art style)
+    const sprite = this.add.rectangle(cx, cy, 16, 14, 0xDAA520, 1)
+      .setStrokeStyle(2, 0xB8860B).setDepth(5);
+
+    // Gold glow underneath
+    const glow = this.add.circle(cx, cy + 2, 18, 0xFFD700, 0.2).setDepth(4);
+    this.tweens.add({
+      targets: glow,
+      scaleX: 1.5, scaleY: 1.5, alpha: 0.08,
+      duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
+    // Floating label
+    const label = this.add.text(cx, cy - 18, '[E] OPEN', {
+      fontFamily: '"Press Start 2P"', fontSize: '6px',
+      color: '#FFD700', stroke: '#000000', strokeThickness: 2, resolution: 4,
+    }).setOrigin(0.5).setDepth(100);
+    this.tweens.add({
+      targets: label, y: cy - 22,
+      duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
+    this.welcomeChest = { sprite, glow, label, x: cx, y: cy, opened: false };
+  }
+
+  private checkWelcomeChest() {
+    if (!this.welcomeChest || this.welcomeChest.opened || !this.player) return;
+    const dx = this.player.x - this.welcomeChest.x;
+    const dy = this.player.y - this.welcomeChest.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < this.WELCOME_CHEST_PICKUP_DIST) {
+      this.welcomeChest.label.setVisible(true);
+      if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+        this.openWelcomeChest();
+      }
+    } else {
+      this.welcomeChest.label.setVisible(dist < 60);
+    }
+  }
+
+  private openWelcomeChest() {
+    if (!this.welcomeChest || this.welcomeChest.opened) return;
+    this.welcomeChest.opened = true;
+
+    SoundManager.play('chest_open');
+
+    const { sprite, glow, label, x, y } = this.welcomeChest;
+
+    // Burst animation
+    this.tweens.killTweensOf(glow);
+    this.tweens.killTweensOf(label);
+    this.tweens.add({
+      targets: sprite, scaleX: 1.5, scaleY: 0.3, alpha: 0,
+      duration: 400, ease: 'Power2',
+      onComplete: () => sprite.destroy(),
+    });
+    this.tweens.add({
+      targets: glow, scaleX: 4, scaleY: 4, alpha: 0,
+      duration: 500, ease: 'Power2',
+      onComplete: () => glow.destroy(),
+    });
+    label.destroy();
+
+    // Particle burst — 8 gold squares
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const p = this.add.rectangle(x, y, 4, 4, 0xFFD700, 1).setDepth(200);
+      this.tweens.add({
+        targets: p,
+        x: x + Math.cos(angle) * 40,
+        y: y + Math.sin(angle) * 40 - 20,
+        alpha: 0, scaleX: 0.2, scaleY: 0.2,
+        duration: 600, ease: 'Power2',
+        onComplete: () => p.destroy(),
+      });
+    }
+
+    // Flash gold
+    this.flashScreen(0xFFD700, 300);
+
+    // Floating reward text
+    const txt = this.add.text(x, y - 16, '+50 GOLD  ⚔ Starter Sword', {
+      fontFamily: '"Press Start 2P"', fontSize: '7px',
+      color: '#FFD700', stroke: '#000', strokeThickness: 3, resolution: 4,
+    }).setOrigin(0.5).setDepth(200);
+    this.tweens.add({
+      targets: txt, y: txt.y - 50, alpha: 0,
+      duration: 3000, ease: 'Power2',
+      onComplete: () => txt.destroy(),
+    });
+
+    // Award gold + item via API
+    fetch('/api/player/welcome-chest', { method: 'POST' }).catch(() => {});
+
+    // Set quest beacon to arena NPC after 1.5s
+    this.time.delayedCall(1500, () => {
+      this.setQuestBeacon('Valkyra');
+      this.game.events.emit('zone_enter_banner', 'QUEST: Visit the Arena');
+      SoundManager.play('quest_accept');
+    });
+  }
+
+  private setQuestBeacon(npcName: string) {
+    // Find NPC sprite by name
+    let targetSprite: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite | null = null;
+    this.npcSprites.forEach((sprite, id) => {
+      if (sprite.getData('name') === npcName) {
+        targetSprite = sprite;
+        this.questBeaconTarget = id;
+      }
+    });
+
+    if (!targetSprite) return;
+
+    // Create floating arrow above NPC
+    if (this.questBeacon) this.questBeacon.destroy();
+    this.questBeacon = this.add.text(
+      (targetSprite as any).x, (targetSprite as any).y - 50, '▼', {
+      fontFamily: '"Press Start 2P"', fontSize: '12px',
+      color: '#FFD700', stroke: '#000', strokeThickness: 3, resolution: 4,
+    }).setOrigin(0.5).setDepth(200);
+
+    this.tweens.add({
+      targets: this.questBeacon,
+      y: (targetSprite as any).y - 58,
+      duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+  }
+
+  private clearQuestBeacon() {
+    if (this.questBeacon) {
+      this.tweens.killTweensOf(this.questBeacon);
+      this.questBeacon.destroy();
+      this.questBeacon = null;
+    }
+    this.questBeaconTarget = null;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PHASE E — DAILY CHEST (physical in-world ceremony)
+  // ═══════════════════════════════════════════════════════════
+  private dailyChest: {
+    sprite: Phaser.GameObjects.Rectangle;
+    glow: Phaser.GameObjects.Arc;
+    shimmer: Phaser.GameObjects.Arc;
+    label: Phaser.GameObjects.Text;
+    x: number; y: number;
+    claimed: boolean;
+  } | null = null;
+
+  public spawnDailyChest(canClaim: boolean, streakDay: number) {
+    // Village fountain area (center of plaza)
+    const cx = 640;
+    const cy = 560;
+
+    if (this.dailyChest) {
+      this.dailyChest.sprite.destroy();
+      this.dailyChest.glow.destroy();
+      this.dailyChest.shimmer.destroy();
+      this.dailyChest.label.destroy();
+      this.dailyChest = null;
+    }
+
+    if (!canClaim) return; // Already claimed today
+
+    const sprite = this.add.rectangle(cx, cy, 18, 15, 0x8B4513, 1)
+      .setStrokeStyle(2, 0xFFD700).setDepth(5);
+
+    const glow = this.add.circle(cx, cy + 2, 20, 0xF39C12, 0.2).setDepth(4);
+    this.tweens.add({
+      targets: glow,
+      scaleX: 1.6, scaleY: 1.6, alpha: 0.06,
+      duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
+    const shimmer = this.add.circle(cx, cy - 4, 3, 0xFFD700, 0.8).setDepth(6);
+    this.tweens.add({
+      targets: shimmer,
+      y: cy - 14, alpha: 0, scaleX: 0.3, scaleY: 0.3,
+      duration: 1500, yoyo: false, repeat: -1, ease: 'Power1',
+    });
+
+    const label = this.add.text(cx, cy - 22, `[E] DAY ${streakDay} CHEST`, {
+      fontFamily: '"Press Start 2P"', fontSize: '5px',
+      color: '#F39C12', stroke: '#000', strokeThickness: 2, resolution: 4,
+    }).setOrigin(0.5).setDepth(100);
+    this.tweens.add({
+      targets: label, y: cy - 26,
+      duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
+    this.dailyChest = { sprite, glow, shimmer, label, x: cx, y: cy, claimed: false };
+  }
+
+  private checkDailyChest() {
+    if (!this.dailyChest || this.dailyChest.claimed || !this.player) return;
+    const dx = this.player.x - this.dailyChest.x;
+    const dy = this.player.y - this.dailyChest.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 30 && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      this.openDailyChest();
+    }
+  }
+
+  private async openDailyChest() {
+    if (!this.dailyChest || this.dailyChest.claimed) return;
+    this.dailyChest.claimed = true;
+
+    SoundManager.play('chest_open');
+
+    const { sprite, glow, shimmer, label, x, y } = this.dailyChest;
+
+    // Burst
+    this.tweens.killTweensOf(glow);
+    this.tweens.killTweensOf(shimmer);
+    this.tweens.killTweensOf(label);
+    this.tweens.add({ targets: sprite, scaleX: 1.5, scaleY: 0.3, alpha: 0, duration: 400 });
+    this.tweens.add({ targets: [glow, shimmer], alpha: 0, duration: 300 });
+    label.destroy();
+
+    // Particles
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const p = this.add.rectangle(x, y, 3, 3, 0xF39C12, 1).setDepth(200);
+      this.tweens.add({
+        targets: p,
+        x: x + Math.cos(angle) * 50,
+        y: y + Math.sin(angle) * 50 - 25,
+        alpha: 0, duration: 700, ease: 'Power2',
+        onComplete: () => p.destroy(),
+      });
+    }
+
+    this.flashScreen(0xF39C12, 300);
+
+    // Claim via API
+    try {
+      const res = await fetch('/api/player/daily-login', { method: 'POST' });
+      const data = await res.json();
+      const reward = data.reward ?? { gold: 50, xp: 25 };
+      const streak = data.streak ?? 1;
+
+      SoundManager.play('coin');
+
+      const txt = this.add.text(x, y - 16,
+        `DAY ${streak}! +${reward.gold}G +${reward.xp}XP`, {
+        fontFamily: '"Press Start 2P"', fontSize: '7px',
+        color: '#F39C12', stroke: '#000', strokeThickness: 3, resolution: 4,
+      }).setOrigin(0.5).setDepth(200);
+      this.tweens.add({
+        targets: txt, y: txt.y - 50, alpha: 0,
+        duration: 3000, ease: 'Power2',
+        onComplete: () => txt.destroy(),
+      });
+    } catch {
+      // Silent fail
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  CLEANUP
   // ═══════════════════════════════════════════════════════════
   shutdown() {
@@ -3207,5 +4562,18 @@ export class WorldScene extends Phaser.Scene {
     this.stormOverlay?.destroy();
     this.stormWindParticles.forEach(p => p.destroy());
     this.stormWindParticles = [];
+    this.ambientSoundTimer?.remove();
+    this.clearQuestBeacon();
+    if (this.welcomeChest) {
+      this.welcomeChest.sprite?.destroy();
+      this.welcomeChest.glow?.destroy();
+      this.welcomeChest.label?.destroy();
+    }
+    if (this.dailyChest) {
+      this.dailyChest.sprite?.destroy();
+      this.dailyChest.glow?.destroy();
+      this.dailyChest.shimmer?.destroy();
+      this.dailyChest.label?.destroy();
+    }
   }
 }

@@ -8,6 +8,7 @@ import { calculateFight } from '@midforge/shared/combat';
 import type { PlayerStats } from '@midforge/shared/types';
 import { generateGhostOpponent, ghostToPlayerStats } from '@/game/arena/GhostOpponent';
 import { awardXP } from '@/lib/xp';
+import { rollLoot, type LootItem } from '@/game/data/lootTable';
 
 function buildPlayerStats(p: any): PlayerStats {
   const weapon = ITEMS[(p.equippedWeapon ?? 'wooden_sword') as ItemKey];
@@ -64,6 +65,12 @@ export async function POST() {
     }).where(eq(players.id, player.id));
   }
 
+  // Phase D: Roll loot drop on win (70% chance)
+  let lootDrop: LootItem | null = null;
+  if (playerWon && Math.random() < 0.7) {
+    lootDrop = rollLoot();
+  }
+
   // Log game event
   if (playerWon) {
     await db.insert(gameEvents).values({
@@ -74,6 +81,7 @@ export async function POST() {
         opponent: ghost.username,
         isGhost: true,
         streak: (player.arenaStreak ?? 0) + 1,
+        loot: lootDrop ? { id: lootDrop.id, name: lootDrop.name, rarity: lootDrop.rarity } : null,
       },
     });
   }
@@ -87,6 +95,15 @@ export async function POST() {
       evolved,
       newXP,
       fightLog: result.fightLog,
+      lootDrop: lootDrop ? {
+        id: lootDrop.id,
+        name: lootDrop.name,
+        type: lootDrop.type,
+        rarity: lootDrop.rarity,
+        icon: lootDrop.icon,
+        flavorText: lootDrop.flavorText,
+        statBonus: lootDrop.statBonus,
+      } : null,
       ghost: {
         username: ghost.username,
         tier: ghost.tier,
@@ -98,7 +115,7 @@ export async function POST() {
         title: playerWon
           ? `⚔️ @${player.xUsername} defeated ${ghost.username} in The Arena`
           : `⚔️ ${ghost.username} defeated @${player.xUsername} in The Arena`,
-        subtitle: `+${xpReward} XP ${goldReward > 0 ? `· +${goldReward}G` : '· Keep training'}`,
+        subtitle: `+${xpReward} XP ${goldReward > 0 ? `· +${goldReward}G` : '· Keep training'}${lootDrop ? ` · 🎁 ${lootDrop.name}` : ''}`,
         winnerStats: `Ghost Fighter · Difficulty ${Math.round(ghost.difficulty * 100)}%`,
         cta: 'Play at midforgegame.com →',
       },

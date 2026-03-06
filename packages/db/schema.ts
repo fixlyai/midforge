@@ -39,6 +39,9 @@ export const players = pgTable('players', {
   arenaStreak: integer('arena_streak').default(0),
   lastArenaDate: text('last_arena_date'),
   pendingNotifications: jsonb('pending_notifications').$type<{ type: string; message: string }[]>(),
+  friends: jsonb('friends').$type<string[]>().default([]),
+  achievements: jsonb('achievements').$type<string[]>().default([]),
+  tilesWalked: integer('tiles_walked').default(0),
   createdAt: timestamp('created_at').defaultNow(),
   lastSeenAt: timestamp('last_seen_at').defaultNow(),
 });

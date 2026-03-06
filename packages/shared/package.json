@@ -7,6 +7,7 @@
     "./types": "./types.ts",
     "./quests": "./quests.ts",
     "./combat": "./combat.ts",
-    "./constants/game": "./constants/game.ts"
+    "./constants/game": "./constants/game.ts",
+    "./character": "./character.ts"
   }
 }
