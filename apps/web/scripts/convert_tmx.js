@@ -1,5 +1,6 @@
 const fs = require('fs');
-const xml = fs.readFileSync('c:/Users/maxim/CascadeProjects/midforge/apps/web/public/assets/maps/midforge_world.tmx', 'utf8');
+const src = process.argv[2] || 'C:/Users/maxim/Downloads/midforge_world_v2.tmx';
+const xml = fs.readFileSync(src, 'utf8');
 
 const tmj = {
   compressionlevel: -1,

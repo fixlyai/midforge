@@ -9,8 +9,8 @@ export const MAP_FILE = '/assets/maps/midforge_world.tmj';
 
 // ── Tile Dimensions (defaults — overridden by map properties) ─
 export const TILE_SIZE = 16;
-export const MAP_COLS = 80;
-export const MAP_ROWS = 70;
+export const MAP_COLS = 64;
+export const MAP_ROWS = 64;
 export const MAP_WIDTH = MAP_COLS * TILE_SIZE;
 export const MAP_HEIGHT = MAP_ROWS * TILE_SIZE;
 

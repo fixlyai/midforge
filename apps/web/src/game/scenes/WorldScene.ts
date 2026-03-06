@@ -142,6 +142,7 @@ export class WorldScene extends Phaser.Scene {
   private npcPromptLabel: Phaser.GameObjects.Text | null = null;
   private nearbyNpcId: string | null = null;
   private interactKey!: Phaser.Input.Keyboard.Key;
+  private interactPressed = false;
 
   // Intro
   private introActive = false;
@@ -419,6 +420,7 @@ export class WorldScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys('W,S,A,D') as Record<string, Phaser.Input.Keyboard.Key>;
     this.interactKey = this.input.keyboard!.addKey('E');
+    this.interactKey.on('down', () => { this.interactPressed = true; });
 
     // ── Inventory key (I) ──
     this.input.keyboard!.addKey('I').on('down', () => {
@@ -1829,12 +1831,13 @@ export class WorldScene extends Phaser.Scene {
     const lineY = cam.height / 2 - 30;
 
     for (let i = 0; i < INTRO.cinematicLines.length; i++) {
-      const txt = this.add.text(cam.width / 2, lineY + i * 28, INTRO.cinematicLines[i], {
+      const txt = this.add.text(cam.width / 2, lineY + i * 22, INTRO.cinematicLines[i], {
         fontFamily: '"Press Start 2P", monospace',
-        fontSize: '12px',
+        fontSize: '8px',
         color: '#FFFFFF',
         align: 'center',
         resolution: 4,
+        wordWrap: { width: cam.width - 32 },
       }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
       lineTexts.push(txt);
     }
@@ -3140,7 +3143,8 @@ export class WorldScene extends Phaser.Scene {
         this.npcPromptLabel.setVisible(true);
       }
 
-      if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      if (this.interactPressed) {
+        this.interactPressed = false;
         this.interactWithNPC(closestId);
       }
     } else {
@@ -4289,7 +4293,8 @@ export class WorldScene extends Phaser.Scene {
 
     if (dist < this.WELCOME_CHEST_PICKUP_DIST) {
       this.welcomeChest.label.setVisible(true);
-      if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      if (this.interactPressed) {
+        this.interactPressed = false;
         this.openWelcomeChest();
       }
     } else {
@@ -4457,7 +4462,8 @@ export class WorldScene extends Phaser.Scene {
     const dy = this.player.y - this.dailyChest.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (dist < 30 && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+    if (dist < 30 && this.interactPressed) {
+      this.interactPressed = false;
       this.openDailyChest();
     }
   }

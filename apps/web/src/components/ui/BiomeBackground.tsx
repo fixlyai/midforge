@@ -33,7 +33,7 @@ const IMG_BASE: React.CSSProperties = {
   position: 'absolute',
   width: '100%',
   height: '100%',
-  objectFit: 'cover',
+  objectFit: 'fill',
   imageRendering: 'pixelated',
   top: 0,
   left: 0,
