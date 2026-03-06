@@ -157,11 +157,37 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 48, frameHeight: 48,
     });
 
+    // ── Military Camp assets ──
+    // Static images
+    this.load.image('mc_tent', '/assets/military_camp/Military_Tents.png');
+    this.load.image('mc_tower', '/assets/military_camp/Lookout_Towers.png');
+    this.load.image('mc_palisade', '/assets/military_camp/Palisade.png');
+    this.load.image('mc_cannon', '/assets/military_camp/Cannon.png');
+    this.load.image('mc_catapult', '/assets/military_camp/Catapult.png');
+    this.load.image('mc_mantlet', '/assets/military_camp/Mantlet.png');
+    this.load.image('mc_spikes', '/assets/military_camp/Spiked_Barriers.png');
+    this.load.image('mc_wood_spikes', '/assets/military_camp/Wood_Spikes.png');
+    this.load.image('mc_target', '/assets/military_camp/Archery_Target.png');
+    this.load.image('mc_dummy', '/assets/military_camp/Target_Dummys.png');
+    this.load.image('mc_weapon_stand', '/assets/military_camp/Weapon_Stands.png');
+    this.load.image('mc_bench', '/assets/military_camp/Split_Log_Benches.png');
+    // Animated spritesheets
+    this.load.spritesheet('mc_flag', '/assets/military_camp/Flags_Anim.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+    this.load.spritesheet('mc_gate', '/assets/military_camp/Palisade_Gate_Anim.png', {
+      frameWidth: 64, frameHeight: 64,
+    });
+    this.load.spritesheet('mc_campfire_pot', '/assets/military_camp/Campfire_Pot_Anim.png', {
+      frameWidth: 32, frameHeight: 32,
+    });
+
     // Suppress errors for missing sprite files (assets may not exist yet)
     this.load.on('loaderror', (file: any) => {
       if (file?.key && (file.key.includes('_base') || file.key.includes('_upgraded') ||
-          file.key.includes('_ascended') || file.key.startsWith('npc_') || file.key.startsWith('cf_'))) {
-        // Silently ignore — sprite file not found
+          file.key.includes('_ascended') || file.key.startsWith('npc_') || file.key.startsWith('cf_')
+          || file.key.startsWith('mc_') || file.key.startsWith('music_'))) {
+        // Silently ignore — sprite/music file not found
       }
     });
   }
@@ -374,6 +400,35 @@ export class PreloadScene extends Phaser.Scene {
         key: 'cf_windmill_sail_anim',
         frames: anims.generateFrameNumbers('cf_windmill_sail', { start: 0, end: 3 }),
         frameRate: 6, // ~150ms per frame
+        repeat: -1,
+      });
+    }
+
+    // ── Military Camp animations ──
+    // Flag: 16×16, row 0 = 6 frames (first color variant)
+    if (this.textures.exists('mc_flag') && !anims.exists('mc_flag_anim')) {
+      anims.create({
+        key: 'mc_flag_anim',
+        frames: anims.generateFrameNumbers('mc_flag', { start: 0, end: 5 }),
+        frameRate: 7,
+        repeat: -1,
+      });
+    }
+    // Palisade gate: 64×64, 3 frames
+    if (this.textures.exists('mc_gate') && !anims.exists('mc_gate_anim')) {
+      anims.create({
+        key: 'mc_gate_anim',
+        frames: anims.generateFrameNumbers('mc_gate', { start: 0, end: 2 }),
+        frameRate: 5,
+        repeat: -1,
+      });
+    }
+    // Campfire pot: 32×32, ~7 frames (240/32 ≈ 7)
+    if (this.textures.exists('mc_campfire_pot') && !anims.exists('mc_campfire_pot_anim')) {
+      anims.create({
+        key: 'mc_campfire_pot_anim',
+        frames: anims.generateFrameNumbers('mc_campfire_pot', { start: 0, end: 6 }),
+        frameRate: 7,
         repeat: -1,
       });
     }

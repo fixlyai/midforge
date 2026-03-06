@@ -246,6 +246,7 @@ export class WorldScene extends Phaser.Scene {
     this.initWanderingNpcs();
     this.placeCuteFantasyBuildings();
     this.placeDecorations();
+    this.placeMilitaryCamp();
     this.spawnVillageAnimals();
 
     // ── Player ──────────────────────────────────────────
@@ -1108,6 +1109,78 @@ export class WorldScene extends Phaser.Scene {
 
     // Fountain in village square
     placeAnim('cf_fountain', 'cf_fountain_anim', 620, 500, 2, 5);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  MILITARY CAMP — decorative zone east of the arena
+  // ═══════════════════════════════════════════════════════════
+  private placeMilitaryCamp() {
+    // Camp center: ~780, 980 (east of arena area)
+    const cx = 780, cy = 980;
+    const placeImg = (key: string, x: number, y: number, scale = 2, depth = 3) => {
+      if (!this.textures.exists(key)) return;
+      this.add.image(x, y, key).setScale(scale).setDepth(depth);
+    };
+    const placeAnim = (key: string, animKey: string, x: number, y: number, scale = 2, depth = 4) => {
+      if (!this.textures.exists(key)) return;
+      const s = this.add.sprite(x, y, key).setScale(scale).setDepth(depth);
+      if (this.anims.exists(animKey)) s.play(animKey);
+    };
+
+    // Tents — main structures (use cropped frame from spritesheet)
+    placeImg('mc_tent', cx - 40, cy - 40, 1.5, 3);
+
+    // Lookout towers at zone corners
+    placeImg('mc_tower', cx - 100, cy - 80, 1.5, 3);
+    placeImg('mc_tower', cx + 100, cy - 80, 1.5, 3);
+
+    // Palisade walls along perimeter
+    placeImg('mc_palisade', cx, cy - 100, 2, 2);
+    placeImg('mc_palisade', cx, cy + 80, 2, 2);
+
+    // Animated gate at entrance
+    placeAnim('mc_gate', 'mc_gate_anim', cx, cy + 50, 2, 4);
+
+    // Cannon near gate
+    placeImg('mc_cannon', cx - 50, cy + 40, 2, 4);
+    placeImg('mc_cannon', cx + 50, cy + 40, 2, 4);
+
+    // Catapult inside zone
+    placeImg('mc_catapult', cx + 60, cy - 20, 2, 4);
+
+    // Mantlets scattered as defensive props
+    placeImg('mc_mantlet', cx - 80, cy, 2, 4);
+    placeImg('mc_mantlet', cx + 80, cy + 20, 2, 4);
+
+    // Spiked barriers along perimeter
+    placeImg('mc_spikes', cx - 90, cy + 60, 2, 2);
+    placeImg('mc_spikes', cx + 90, cy + 60, 2, 2);
+
+    // Wood spikes near perimeter
+    placeImg('mc_wood_spikes', cx - 100, cy + 40, 2, 2);
+
+    // Archery targets in open area
+    placeImg('mc_target', cx + 40, cy + 20, 2, 4);
+    placeImg('mc_target', cx + 60, cy + 30, 2, 4);
+
+    // Target dummies
+    placeImg('mc_dummy', cx + 30, cy + 10, 2, 4);
+    placeImg('mc_dummy', cx + 70, cy + 15, 2, 4);
+
+    // Weapon stands near tent entrances
+    placeImg('mc_weapon_stand', cx - 20, cy - 20, 2, 4);
+
+    // Split log benches near campfire
+    placeImg('mc_bench', cx - 30, cy + 10, 2, 4);
+    placeImg('mc_bench', cx + 10, cy + 10, 2, 4);
+
+    // Animated flags on towers
+    placeAnim('mc_flag', 'mc_flag_anim', cx - 100, cy - 100, 2, 5);
+    placeAnim('mc_flag', 'mc_flag_anim', cx + 100, cy - 100, 2, 5);
+    placeAnim('mc_flag', 'mc_flag_anim', cx, cy - 60, 2, 5);
+
+    // Campfire pot near tents
+    placeAnim('mc_campfire_pot', 'mc_campfire_pot_anim', cx - 10, cy + 5, 2, 5);
   }
 
   // ═══════════════════════════════════════════════════════════
