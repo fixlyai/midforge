@@ -21,11 +21,19 @@
   }
 }
 
-/* Phaser canvas — crisp pixel art on retina */
+/* Phaser canvas + battle backgrounds — crisp pixel art on retina */
 canvas {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  image-rendering: -moz-crisp-edges;
   -webkit-font-smoothing: none;
+}
+
+/* Battle background images — force nearest-neighbor on all browsers */
+.battle-bg-container img {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  image-rendering: -moz-crisp-edges;
 }
 
 /* Game container on mobile */

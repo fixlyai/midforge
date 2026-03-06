@@ -306,7 +306,7 @@ export default function BiomeBackground({ biome, phase, playerWon, onIntroComple
   const showGoldSweep = phase === 'result' && playerWon;
 
   return (
-    <div style={{
+    <div className="battle-bg-container" style={{
       position: 'relative',
       width: '100%',
       height: 180,
@@ -317,6 +317,11 @@ export default function BiomeBackground({ biome, phase, playerWon, onIntroComple
       transition: resultFilter ? 'filter 1s ease' : undefined,
     }}>
       <style>{`
+        .battle-bg-container img, .battle-bg-container canvas {
+          image-rendering: pixelated;
+          image-rendering: crisp-edges;
+          image-rendering: -moz-crisp-edges;
+        }
         @keyframes driftLeft {
           0%   { transform: translateX(0); }
           50%  { transform: translateX(-12px); }
