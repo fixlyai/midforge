@@ -246,6 +246,7 @@ export class WorldScene extends Phaser.Scene {
     this.initWanderingNpcs();
     this.placeCuteFantasyBuildings();
     this.placeDecorations();
+    this.placeTrees();
     this.placeMilitaryCamp();
     this.spawnVillageAnimals();
 
@@ -1119,6 +1120,190 @@ export class WorldScene extends Phaser.Scene {
 
     // Fountain in village square
     placeAnim('cf_fountain', 'cf_fountain_anim', 620, 500, 2, 5);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  CUTE FANTASY TREES — replace old tilemap trees
+  // ═══════════════════════════════════════════════════════════
+
+  // Tree config: key, frame index for mature variant, species for particle matching
+  private static readonly TREE_TYPES: { key: string; frame: number; species: 'birch' | 'oak' | 'spruce' | 'fruit' }[] = [
+    { key: 'tree_small_birch',  frame: 2, species: 'birch' },
+    { key: 'tree_small_oak',    frame: 2, species: 'oak' },
+    { key: 'tree_small_spruce', frame: 2, species: 'spruce' },
+    { key: 'tree_small_fruit',  frame: 2, species: 'fruit' },
+    { key: 'tree_med_birch',    frame: 1, species: 'birch' },
+    { key: 'tree_med_oak',      frame: 1, species: 'oak' },
+    { key: 'tree_med_spruce',   frame: 1, species: 'spruce' },
+    { key: 'tree_med_fruit',    frame: 1, species: 'fruit' },
+    { key: 'tree_big_birch',    frame: 1, species: 'birch' },
+    { key: 'tree_big_oak',      frame: 2, species: 'oak' },
+    { key: 'tree_big_spruce',   frame: 2, species: 'spruce' },
+    { key: 'tree_big_fruit',    frame: 1, species: 'fruit' },
+  ];
+
+  private static readonly PARTICLE_KEYS: Record<string, string> = {
+    birch: 'particle_birch',
+    oak: 'particle_oak',
+    spruce: 'particle_spruce',
+  };
+
+  private placeTrees() {
+    const SCALE = 2;
+    const seededRng = (seed: number) => {
+      let s = seed;
+      return () => { s = (s * 16807 + 0) % 2147483647; return s / 2147483647; };
+    };
+    const rng = seededRng(42);
+
+    // Place a tree sprite anchored bottom-center, depth-sorted by Y
+    const placeTree = (key: string, frame: number, x: number, y: number) => {
+      if (!this.textures.exists(key)) return null;
+      const s = this.add.sprite(x, y, key, frame);
+      s.setScale(SCALE);
+      s.setOrigin(0.5, 1); // bottom-center anchor
+      s.setDepth(y); // depth-sort by Y so player walks in front/behind
+      return s;
+    };
+
+    // Place a cluster: 1 big tree + 2-3 medium + 1-2 small of same species
+    const placeCluster = (cx: number, cy: number, species: 'birch' | 'oak' | 'spruce' | 'fruit', density: 'dense' | 'normal' | 'sparse') => {
+      const types = WorldScene.TREE_TYPES.filter(t => t.species === species);
+      const big = types.find(t => t.key.includes('big'));
+      const med = types.find(t => t.key.includes('med'));
+      const small = types.find(t => t.key.includes('small'));
+
+      // Big tree at center
+      if (big) placeTree(big.key, big.frame, cx, cy);
+
+      // Medium trees around
+      const medCount = density === 'dense' ? 3 : density === 'normal' ? 2 : 1;
+      for (let i = 0; i < medCount; i++) {
+        const angle = (i / medCount) * Math.PI * 2 + rng() * 0.5;
+        const dist = 30 + rng() * 20;
+        if (med) placeTree(med.key, med.frame, cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist * 0.6);
+      }
+
+      // Small trees at edges
+      const smCount = density === 'dense' ? 2 : 1;
+      for (let i = 0; i < smCount; i++) {
+        const angle = rng() * Math.PI * 2;
+        const dist = 45 + rng() * 25;
+        if (small) placeTree(small.key, small.frame, cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist * 0.5);
+      }
+
+      // Leaf particles near cluster (max 5 per cluster)
+      const particleKey = WorldScene.PARTICLE_KEYS[species];
+      if (particleKey && this.textures.exists(particleKey)) {
+        const pCount = Math.min(5, density === 'dense' ? 4 : density === 'normal' ? 3 : 2);
+        for (let i = 0; i < pCount; i++) {
+          const px = cx + (rng() - 0.5) * 80;
+          const py = cy + (rng() - 0.5) * 50;
+          const leaf = this.add.image(px, py, particleKey).setScale(SCALE).setAlpha(0.4).setDepth(py + 100);
+          // Slow drift tween — loop forever
+          this.tweens.add({
+            targets: leaf,
+            x: leaf.x + (rng() - 0.5) * 30,
+            y: leaf.y + 15 + rng() * 10,
+            alpha: 0,
+            duration: 3000 + rng() * 2000,
+            ease: 'Sine.easeInOut',
+            repeat: -1,
+            yoyo: true,
+          });
+        }
+      }
+    };
+
+    // Place individual scattered trees (for variety between clusters)
+    const placeScattered = (x: number, y: number, size: 'small' | 'med' | 'big', species: 'birch' | 'oak' | 'spruce' | 'fruit') => {
+      const t = WorldScene.TREE_TYPES.find(tt => tt.key.includes(size) && tt.species === species);
+      if (t) placeTree(t.key, t.frame, x, y);
+    };
+
+    // ══════════════════════════════════════════
+    // FOREST NW (x=64..368, y=64..480) — dense spruce + oak forest
+    // ══════════════════════════════════════════
+    placeCluster(120, 140, 'spruce', 'dense');
+    placeCluster(250, 120, 'oak', 'dense');
+    placeCluster(160, 260, 'oak', 'normal');
+    placeCluster(300, 200, 'spruce', 'normal');
+    placeCluster(110, 380, 'spruce', 'dense');
+    placeCluster(280, 350, 'oak', 'normal');
+    placeCluster(200, 440, 'spruce', 'normal');
+    placeCluster(340, 440, 'oak', 'sparse');
+    // Edge scattered trees
+    placeScattered(80, 200, 'small', 'spruce');
+    placeScattered(350, 150, 'small', 'oak');
+    placeScattered(100, 470, 'med', 'spruce');
+    placeScattered(340, 100, 'small', 'spruce');
+    placeScattered(200, 100, 'med', 'oak');
+
+    // ══════════════════════════════════════════
+    // FOREST NE (x=976..1248, y=64..432) — birch + oak forest
+    // ══════════════════════════════════════════
+    placeCluster(1020, 140, 'birch', 'dense');
+    placeCluster(1150, 120, 'oak', 'normal');
+    placeCluster(1050, 280, 'birch', 'normal');
+    placeCluster(1200, 250, 'oak', 'dense');
+    placeCluster(1000, 400, 'birch', 'normal');
+    placeCluster(1140, 380, 'oak', 'normal');
+    placeCluster(1220, 130, 'birch', 'sparse');
+    // Edge scattered
+    placeScattered(990, 200, 'small', 'birch');
+    placeScattered(1230, 350, 'small', 'oak');
+    placeScattered(1100, 100, 'med', 'birch');
+    placeScattered(1180, 420, 'small', 'birch');
+
+    // ══════════════════════════════════════════
+    // VILLAGE EDGES — fruit trees near buildings, scattered oaks
+    // ══════════════════════════════════════════
+    // Near elder house (992, 448)
+    placeCluster(1080, 520, 'fruit', 'sparse');
+    placeScattered(950, 550, 'med', 'fruit');
+
+    // Near tavern (704, 672)
+    placeScattered(660, 620, 'small', 'fruit');
+    placeScattered(890, 640, 'med', 'oak');
+
+    // Near pond (960, 384) — birch near water
+    placeScattered(920, 360, 'med', 'birch');
+    placeScattered(1100, 380, 'small', 'birch');
+
+    // Village south border — scattered medium trees
+    placeScattered(200, 600, 'med', 'oak');
+    placeScattered(400, 650, 'small', 'oak');
+    placeScattered(600, 700, 'med', 'spruce');
+
+    // Near arena (448-832, 880-1088) — sparse perimeter oaks
+    placeScattered(420, 860, 'med', 'oak');
+    placeScattered(850, 870, 'small', 'oak');
+    placeScattered(380, 1050, 'small', 'spruce');
+    placeScattered(870, 1060, 'small', 'spruce');
+
+    // Map borders — fill sparse trees along edges
+    // West border
+    placeScattered(40, 530, 'med', 'spruce');
+    placeScattered(30, 650, 'small', 'spruce');
+    placeScattered(50, 770, 'med', 'oak');
+    placeScattered(35, 900, 'small', 'spruce');
+
+    // East border
+    placeScattered(1250, 480, 'small', 'oak');
+    placeScattered(1240, 600, 'med', 'birch');
+    placeScattered(1255, 720, 'small', 'birch');
+    placeScattered(1245, 850, 'med', 'oak');
+
+    // South border
+    placeScattered(100, 1070, 'med', 'spruce');
+    placeScattered(300, 1080, 'small', 'oak');
+    placeScattered(950, 1070, 'small', 'spruce');
+    placeScattered(1100, 1060, 'med', 'oak');
+
+    // North border (between forests)
+    placeScattered(500, 80, 'small', 'oak');
+    placeScattered(700, 60, 'med', 'spruce');
+    placeScattered(850, 70, 'small', 'birch');
   }
 
   // ═══════════════════════════════════════════════════════════

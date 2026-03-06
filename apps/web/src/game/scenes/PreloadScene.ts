@@ -157,6 +157,27 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 48, frameHeight: 48,
     });
 
+    // ── Tree sprites (Cute Fantasy) ──
+    // Small trees: 96×64, 3 variants → 32×64 frames
+    this.load.spritesheet('tree_small_birch', '/assets/trees/Small_Birch_Tree.png', { frameWidth: 32, frameHeight: 64 });
+    this.load.spritesheet('tree_small_oak', '/assets/trees/Small_Oak_Tree.png', { frameWidth: 32, frameHeight: 64 });
+    this.load.spritesheet('tree_small_spruce', '/assets/trees/Small_Spruce_Tree.png', { frameWidth: 32, frameHeight: 64 });
+    this.load.spritesheet('tree_small_fruit', '/assets/trees/Small_Fruit_Tree.png', { frameWidth: 32, frameHeight: 64 });
+    // Medium trees: 96×48, 2 variants → 48×48 frames
+    this.load.spritesheet('tree_med_birch', '/assets/trees/Medium_Birch_Tree.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('tree_med_oak', '/assets/trees/Medium_Oak_Tree.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('tree_med_spruce', '/assets/trees/Medium_Spruce_Tree.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('tree_med_fruit', '/assets/trees/Medium_Fruit_Tree.png', { frameWidth: 48, frameHeight: 64 });
+    // Big trees
+    this.load.spritesheet('tree_big_birch', '/assets/trees/Big_Birch_Tree.png', { frameWidth: 48, frameHeight: 80 });
+    this.load.spritesheet('tree_big_oak', '/assets/trees/Big_Oak_Tree.png', { frameWidth: 64, frameHeight: 80 });
+    this.load.spritesheet('tree_big_spruce', '/assets/trees/Big_Spruce_tree.png', { frameWidth: 64, frameHeight: 80 });
+    this.load.spritesheet('tree_big_fruit', '/assets/trees/Big_Fruit_Tree.png', { frameWidth: 48, frameHeight: 64 });
+    // Leaf particles (16×16 single images)
+    this.load.image('particle_birch', '/assets/trees/Birch_Leaf_Particle.png');
+    this.load.image('particle_oak', '/assets/trees/Oak_Leaf_Particle.png');
+    this.load.image('particle_spruce', '/assets/trees/Spruce_Needle_Particle.png');
+
     // ── Military Camp assets ──
     // Static images
     this.load.image('mc_tent', '/assets/military_camp/Military_Tents.png');
@@ -222,7 +243,8 @@ export class PreloadScene extends Phaser.Scene {
       if (file?.key && (file.key.includes('_base') || file.key.includes('_upgraded') ||
           file.key.includes('_ascended') || file.key.startsWith('npc_') || file.key.startsWith('cf_')
           || file.key.startsWith('mc_') || file.key.startsWith('music_')
-          || file.key.startsWith('dg'))) {
+          || file.key.startsWith('dg') || file.key.startsWith('tree_')
+          || file.key.startsWith('particle_'))) {
         // Silently ignore — sprite/music file not found
       }
     });
