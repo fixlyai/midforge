@@ -58,6 +58,24 @@ export class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_metal', AUDIO.metalClick);
     this.load.audio('sfx_book', AUDIO.bookOpen);
 
+    // ── Music tracks (graceful — silently skip if missing) ──
+    const MUSIC_TRACKS = [
+      'village', 'forest', 'cave', 'ruins', 'plains', 'lakeview', 'castle',
+      'tavern', 'battle', 'battle_boss', 'victory', 'defeat', 'evolution',
+    ];
+    for (const track of MUSIC_TRACKS) {
+      this.load.audio(`music_${track}`, `/assets/music/${track}.mp3`);
+    }
+
+    // ── Weather effects ──
+    this.load.image('cf_clouds', '/assets/weather/Clouds.png');
+    this.load.spritesheet('cf_rain_drop', '/assets/weather/Rain_Drop.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+    this.load.spritesheet('cf_rain_impact', '/assets/weather/Rain_Drop_Impact.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+
     // ── 64×64 LPC Character Sprites (legacy — kept for fallback) ──
     const { frameWidth, frameHeight } = CHARACTER_SPRITE;
     for (const tier of CHARACTER_TIERS) {

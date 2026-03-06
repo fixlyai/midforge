@@ -15,6 +15,7 @@ import {
   getCharacterSpriteKey, TIER_PARTICLE_COLORS,
 } from '@midforge/shared/constants/game';
 import { QuestManager } from '@/game/managers/QuestManager';
+import { MusicManager } from '@/game/managers/MusicManager';
 import { NPC_QUEST_CHAINS } from '@/game/data/npcQuests';
 import { getAmbientLine } from '@/game/data/ambientDialogue';
 
@@ -59,6 +60,7 @@ export class WorldScene extends Phaser.Scene {
   private useNewSprites = false;    // true if 48×48 assets loaded successfully
   private useCuteFantasy = false;   // true if Cute Fantasy player spritesheet loaded
   private playerShadow!: Phaser.GameObjects.Ellipse;
+  private cloudLayer: Phaser.GameObjects.TileSprite | null = null;
   private nameLabel!: Phaser.GameObjects.Text;
   private inputEnabled = false;
 
@@ -122,6 +124,9 @@ export class WorldScene extends Phaser.Scene {
 
   // Quest system
   public questManager!: QuestManager;
+
+  // Music system
+  private musicManager!: MusicManager;
 
   // XP Nuggets — glowing amber orbs on the map
   private xpNuggets: {
@@ -289,6 +294,15 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, mapW, mapH);
     this.physics.world.setBounds(0, 0, mapW, mapH);
 
+    // ── Cloud layer (parallax scrolling, above world but below UI) ──
+    if (this.textures.exists('cf_clouds')) {
+      this.cloudLayer = this.add.tileSprite(0, 0, mapW * 2, mapH * 2, 'cf_clouds')
+        .setOrigin(0, 0)
+        .setAlpha(0.25)
+        .setDepth(50)
+        .setScrollFactor(0.2); // parallax: moves at 20% of camera scroll
+    }
+
     // ── Input ───────────────────────────────────────────
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys('W,S,A,D') as Record<string, Phaser.Input.Keyboard.Key>;
@@ -330,6 +344,10 @@ export class WorldScene extends Phaser.Scene {
 
     // ── Show pending notifications (daily login XP, etc.) ──
     this.showPendingNotifications(playerData);
+
+    // ── Music Manager ──
+    this.musicManager = new MusicManager(this);
+    this.musicManager.playZoneMusic('village');
 
     // ── Quest Manager (Solo Content Layer) ──
     this.questManager = new QuestManager(this, this.playerTier, playerData?.id ?? '');
@@ -1607,6 +1625,12 @@ export class WorldScene extends Phaser.Scene {
     this.checkXpNuggetPickup();
     this.checkBrigandEncounter();
     this.checkStarLandingPickup();
+
+    // Slow cloud drift
+    if (this.cloudLayer) {
+      this.cloudLayer.tilePositionX += 0.15;
+      this.cloudLayer.tilePositionY += 0.05;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -2711,6 +2735,17 @@ export class WorldScene extends Phaser.Scene {
   private onZoneEnter(zoneName: string, zoneType: string) {
     // Notify quest manager
     this.questManager?.onZoneEntered(zoneName);
+
+    // Zone-based music crossfade
+    const zoneMusicMap: Record<string, string> = {
+      'social_hub': 'village', 'tavern_door': 'tavern',
+      'arena_entrance': 'battle', 'castle_gate_trigger': 'castle',
+      'hall_of_legends': 'castle',
+    };
+    const musicKey = zoneMusicMap[zoneName];
+    if (musicKey && this.musicManager) {
+      this.musicManager.playZoneMusic(musicKey);
+    }
 
     if (['safe_zone', 'atmosphere_dark', 'ambient_water'].includes(zoneType)) return;
 
