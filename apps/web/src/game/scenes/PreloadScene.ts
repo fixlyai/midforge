@@ -157,6 +157,13 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 48, frameHeight: 48,
     });
 
+    // ── Encounter sprites (battle overlay) ──
+    const ENCOUNTER_SPRITES = ['Orc', 'Treant', 'Slug', 'SavagePlant', 'Fairy', 'Slugmancer'];
+    for (const name of ENCOUNTER_SPRITES) {
+      this.load.image(`encounter_${name.toLowerCase()}`, `/backgrounds/Encounter Sprites/${name}.png`);
+      this.load.image(`encounter_${name.toLowerCase()}_shadow`, `/backgrounds/Encounter Sprites/${name}Shadow.png`);
+    }
+
     // ── Tree sprites (Cute Fantasy) ──
     // Small trees: 96×64, 3 variants → 32×64 frames
     this.load.spritesheet('tree_small_birch', '/assets/trees/Small_Birch_Tree.png', { frameWidth: 32, frameHeight: 64 });

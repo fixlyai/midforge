@@ -137,6 +137,12 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on('login_streak_notification', (data: { streak: number; xp: number; gold: number; username: string }) => {
       this.showStreakNotification(data);
     });
+
+    // ── Fix 1: Hide bottom HUD during dialogue/cutscene ──
+    this.game.events.on('dialogue_started', () => this.setBottomHudVisible(false));
+    this.game.events.on('dialogue_ended', () => this.setBottomHudVisible(true));
+    this.game.events.on('cutscene_started', () => this.setBottomHudVisible(false));
+    this.game.events.on('cutscene_ended', () => this.setBottomHudVisible(true));
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -339,8 +345,8 @@ export class UIScene extends Phaser.Scene {
       }).setOrigin(0, 0.5).setDepth(101);
     }
 
-    this.questTrackerText.setText(label).setVisible(true);
-    this.questTrackerBg.setVisible(true);
+    this.questTrackerText.setText(label).setVisible(this.bottomHudVisible);
+    this.questTrackerBg.setVisible(this.bottomHudVisible);
   }
 
   private updateXPBar(currentXP: number, tier: string, form: string) {
@@ -420,10 +426,11 @@ export class UIScene extends Phaser.Scene {
     this.dailyQuestElements.push(this.dqBorderGfx);
 
     // Title + countdown
-    this.add.text(panelX + 6, panelY + 4, 'DAILY QUEST', {
+    const dqTitle = this.add.text(panelX + 6, panelY + 4, 'DAILY QUEST', {
       fontFamily: '"Press Start 2P"', fontSize: '5px',
       color: '#FFB800', resolution: R,
     }).setDepth(101);
+    this.dailyQuestElements.push(dqTitle);
 
     // Countdown to midnight UTC
     this.dqCountdownText = this.add.text(panelX + panelW - 6, panelY + 4, '', {
@@ -462,10 +469,11 @@ export class UIScene extends Phaser.Scene {
     }).setDepth(101);
 
     // Reward hint
-    this.add.text(panelX + 6, panelY + panelH - 12, `Reward: ${quest.xp} XP + ${quest.gold} Gold`, {
+    const dqReward = this.add.text(panelX + 6, panelY + panelH - 12, `Reward: ${quest.xp} XP + ${quest.gold} Gold`, {
       fontFamily: '"Press Start 2P"', fontSize: '3px',
       color: '#888888', resolution: R,
     }).setDepth(101);
+    this.dailyQuestElements.push(dqReward);
 
     // Listen for daily quest progress events
     this.game.events.on('daily_quest_progress', (data: { type: string; amount: number }) => {
@@ -623,6 +631,9 @@ export class UIScene extends Phaser.Scene {
   private streakText: Phaser.GameObjects.Text | null = null;
   private streakBg: Phaser.GameObjects.Graphics | null = null;
 
+  // Fix 1: Track all bottom-area HUD elements for dialogue/cutscene hiding
+  private bottomHudVisible = true;
+
   private createStreakHUD() {
     const W = this.cameras.main.width;
     const R = 4;
@@ -722,6 +733,28 @@ export class UIScene extends Phaser.Scene {
         },
       });
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  FIX 1 — HIDE/SHOW BOTTOM HUD DURING DIALOGUE/CUTSCENE
+  // ═══════════════════════════════════════════════════════════
+  private setBottomHudVisible(visible: boolean) {
+    if (this.bottomHudVisible === visible) return;
+    this.bottomHudVisible = visible;
+
+    // Daily quest box elements
+    for (const el of this.dailyQuestElements) {
+      if ('setVisible' in el) (el as any).setVisible(visible);
+    }
+    if (this.dqCountdownText) this.dqCountdownText.setVisible(visible);
+    if (this.dqProgressText) this.dqProgressText.setVisible(visible);
+    if (this.dqProgressBar) this.dqProgressBar.setVisible(visible);
+    if (this.dqStatusText) this.dqStatusText.setVisible(visible);
+    if (this.dqBorderGfx) this.dqBorderGfx.setVisible(visible);
+
+    // Quest tracker (bottom-left)
+    if (this.questTrackerText) this.questTrackerText.setVisible(visible);
+    if (this.questTrackerBg) this.questTrackerBg.setVisible(visible);
   }
 
   private drawBar(graphics: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, pct: number, color: number) {

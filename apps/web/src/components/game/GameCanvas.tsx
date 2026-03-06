@@ -205,11 +205,48 @@ export function GameCanvas({ playerData }: { playerData: PlayerData }) {
       game.events.on('npc_inventory', () => setActivePanel('inventory'));
       game.events.on('npc_arena', () => { setBrigandData(null); setActivePanel('arena'); });
       game.events.on('npc_marketplace', () => setActivePanel('marketplace'));
-      game.events.on('brigand_encounter', (data: any) => { setBrigandData(data); setActivePanel('arena'); });
+      game.events.on('brigand_encounter', async (data: any) => {
+        // Fix 3: Route brigand fights through Phaser battle overlay
+        try {
+          const res = await fetch('/api/arena/ghost', { method: 'POST' });
+          if (!res.ok) return;
+          const json = await res.json();
+          const fight = json.fight;
+          const worldScene = game.scene.getScene('WorldScene') as any;
+          if (worldScene?.openBattle) {
+            worldScene.openBattle({
+              name: data?.brigandName ?? fight.ghost?.username ?? 'Brigand',
+              tier: fight.ghost?.tier ?? 'villager',
+              hp: 0, maxHp: fight.fightLog?.[0]?.dHp ?? 100,
+              fightLog: fight.fightLog ?? [],
+              playerWon: fight.playerWon,
+              xpReward: fight.xpReward ?? 0,
+              goldReward: fight.goldReward ?? 0,
+            });
+          }
+        } catch { /* silent */ }
+      });
 
-      // Phase 1: Tutorial battle — route through arena panel with tutorial enemy data
-      game.events.on('start_tutorial_battle', (data: any) => {
-        setBrigandData(data); setActivePanel('arena');
+      // Phase 1: Tutorial battle — route through Phaser battle overlay
+      game.events.on('start_tutorial_battle', async (data: any) => {
+        try {
+          const res = await fetch('/api/arena/ghost', { method: 'POST' });
+          if (!res.ok) return;
+          const json = await res.json();
+          const fight = json.fight;
+          const worldScene = game.scene.getScene('WorldScene') as any;
+          if (worldScene?.openBattle) {
+            worldScene.openBattle({
+              name: data?.brigandName ?? 'Tutorial Brigand',
+              tier: fight.ghost?.tier ?? 'villager',
+              hp: 0, maxHp: fight.fightLog?.[0]?.dHp ?? 30,
+              fightLog: fight.fightLog ?? [],
+              playerWon: fight.playerWon,
+              xpReward: fight.xpReward ?? 0,
+              goldReward: fight.goldReward ?? 0,
+            });
+          }
+        } catch { /* silent */ }
       });
 
       // Phase 1: Starter sword — award via inventory API

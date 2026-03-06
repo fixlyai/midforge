@@ -144,6 +144,17 @@ export class WorldScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key;
   private interactPressed = false;
 
+  // Battle overlay (Fix 3)
+  private battleOverlay: Phaser.GameObjects.Container | null = null;
+  private battleEnemySprite: Phaser.GameObjects.Image | null = null;
+  private battlePlayerSprite: Phaser.GameObjects.Sprite | null = null;
+  private battleEnemyHpBar: Phaser.GameObjects.Graphics | null = null;
+  private battlePlayerHpBar: Phaser.GameObjects.Graphics | null = null;
+  private battleEnemyHp = 0;
+  private battleEnemyMaxHp = 0;
+  private battlePlayerHp = 0;
+  private battlePlayerMaxHp = 0;
+
   // Intro
   private introActive = false;
   private dialogueBox: Phaser.GameObjects.Container | null = null;
@@ -1254,16 +1265,36 @@ export class WorldScene extends Phaser.Scene {
 
     for (const b of buildings) {
       if (!this.textures.exists(b.key)) continue;
-      this.add.image(b.cx, b.by, b.key)
+      const img = this.add.image(b.cx, b.by, b.key)
         .setOrigin(0.5, 1) // anchor bottom-center
         .setScale(2)
         .setDepth(b.depth ?? 3); // behind NPCs & player
+
+      // Fix 4: Add collision body for building footprint (back wall/roof area only)
+      const bw = img.displayWidth * 0.8;
+      const bh = Math.min(48, img.displayHeight * 0.4);
+      const wall = this.physics.add.staticImage(b.cx, b.by - img.displayHeight + bh / 2, '__DEFAULT');
+      wall.setVisible(false).setDepth(0);
+      const body = wall.body as Phaser.Physics.Arcade.Body;
+      body.setSize(bw, bh);
+      body.setOffset(-bw / 2, -bh / 2);
+      this.walls.add(wall);
     }
 
     // Windmill at tile (47,6) → pixel ~(760, 128)
     if (this.textures.exists('cf_windmill')) {
-      this.add.image(760, 128, 'cf_windmill')
+      const wmImg = this.add.image(760, 128, 'cf_windmill')
         .setOrigin(0.5, 1).setScale(2).setDepth(3);
+
+      // Fix 4: Windmill collision
+      const wmW = wmImg.displayWidth * 0.7;
+      const wmH = Math.min(48, wmImg.displayHeight * 0.35);
+      const wmWall = this.physics.add.staticImage(760, 128 - wmImg.displayHeight + wmH / 2, '__DEFAULT');
+      wmWall.setVisible(false).setDepth(0);
+      const wmBody = wmWall.body as Phaser.Physics.Arcade.Body;
+      wmBody.setSize(wmW, wmH);
+      wmBody.setOffset(-wmW / 2, -wmH / 2);
+      this.walls.add(wmWall);
 
       // Animated sail overlay on top of windmill
       if (this.textures.exists('cf_windmill_sail')) {
@@ -1518,72 +1549,22 @@ export class WorldScene extends Phaser.Scene {
   //  MILITARY CAMP — decorative zone east of the arena
   // ═══════════════════════════════════════════════════════════
   private placeMilitaryCamp() {
-    // Camp center: near arena at tile (46,47) → pixel ~(780, 780)
-    const cx = 780, cy = 780;
-    const placeImg = (key: string, x: number, y: number, scale = 2, depth = 3) => {
-      if (!this.textures.exists(key)) return;
-      this.add.image(x, y, key).setScale(scale).setDepth(depth);
-    };
+    // Fix 5: Arena quadrant (SE) — minimal decorations only.
+    // Removed all clutter: tents, towers, palisades, gates, cannons, catapults,
+    // mantlets, spikes, targets, dummies, weapon stands, benches.
+    // Only keep 2 flags flanking the arena entrance and one campfire.
     const placeAnim = (key: string, animKey: string, x: number, y: number, scale = 2, depth = 4) => {
       if (!this.textures.exists(key)) return;
       const s = this.add.sprite(x, y, key).setScale(scale).setDepth(depth);
       if (this.anims.exists(animKey)) s.play(animKey);
     };
 
-    // Tents — main structures (use cropped frame from spritesheet)
-    placeImg('mc_tent', cx - 40, cy - 40, 1.5, 3);
+    // Two flags flanking the arena building (arena at 736, 752)
+    placeAnim('mc_flag', 'mc_flag_anim', 700, 720, 2, 5);
+    placeAnim('mc_flag', 'mc_flag_anim', 772, 720, 2, 5);
 
-    // Lookout towers at zone corners
-    placeImg('mc_tower', cx - 100, cy - 80, 1.5, 3);
-    placeImg('mc_tower', cx + 100, cy - 80, 1.5, 3);
-
-    // Palisade walls along perimeter
-    placeImg('mc_palisade', cx, cy - 100, 2, 2);
-    placeImg('mc_palisade', cx, cy + 80, 2, 2);
-
-    // Animated gate at entrance
-    placeAnim('mc_gate', 'mc_gate_anim', cx, cy + 50, 2, 4);
-
-    // Cannon near gate
-    placeImg('mc_cannon', cx - 50, cy + 40, 2, 4);
-    placeImg('mc_cannon', cx + 50, cy + 40, 2, 4);
-
-    // Catapult inside zone
-    placeImg('mc_catapult', cx + 60, cy - 20, 2, 4);
-
-    // Mantlets scattered as defensive props
-    placeImg('mc_mantlet', cx - 80, cy, 2, 4);
-    placeImg('mc_mantlet', cx + 80, cy + 20, 2, 4);
-
-    // Spiked barriers along perimeter
-    placeImg('mc_spikes', cx - 90, cy + 60, 2, 2);
-    placeImg('mc_spikes', cx + 90, cy + 60, 2, 2);
-
-    // Wood spikes near perimeter
-    placeImg('mc_wood_spikes', cx - 100, cy + 40, 2, 2);
-
-    // Archery targets in open area
-    placeImg('mc_target', cx + 40, cy + 20, 2, 4);
-    placeImg('mc_target', cx + 60, cy + 30, 2, 4);
-
-    // Target dummies
-    placeImg('mc_dummy', cx + 30, cy + 10, 2, 4);
-    placeImg('mc_dummy', cx + 70, cy + 15, 2, 4);
-
-    // Weapon stands near tent entrances
-    placeImg('mc_weapon_stand', cx - 20, cy - 20, 2, 4);
-
-    // Split log benches near campfire
-    placeImg('mc_bench', cx - 30, cy + 10, 2, 4);
-    placeImg('mc_bench', cx + 10, cy + 10, 2, 4);
-
-    // Animated flags on towers
-    placeAnim('mc_flag', 'mc_flag_anim', cx - 100, cy - 100, 2, 5);
-    placeAnim('mc_flag', 'mc_flag_anim', cx + 100, cy - 100, 2, 5);
-    placeAnim('mc_flag', 'mc_flag_anim', cx, cy - 60, 2, 5);
-
-    // Campfire pot near tents
-    placeAnim('mc_campfire_pot', 'mc_campfire_pot_anim', cx - 10, cy + 5, 2, 5);
+    // Small campfire near arena entrance
+    placeAnim('cf_campfire', 'cf_campfire_anim', 736, 780, 2, 5);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1603,15 +1584,15 @@ export class WorldScene extends Phaser.Scene {
       this.duckWander(duck, pos.x, pos.y);
     });
 
-    // Duck in a hat near the tavern (~780, 760)
+    // Duck in a hat near the tavern entrance (moved away from arena)
     if (this.textures.exists('cf_duck_hat')) {
-      const hatDuck = this.add.sprite(760, 760, 'cf_duck_hat').setScale(1.5).setDepth(6);
+      const hatDuck = this.add.sprite(660, 500, 'cf_duck_hat').setScale(1.5).setDepth(6);
       if (this.anims.exists('cf_duck_hat_idle')) hatDuck.play('cf_duck_hat_idle');
-      this.duckWander(hatDuck, 760, 760);
+      this.duckWander(hatDuck, 660, 500);
     }
 
-    // 2 horses near village edge (south side, ~400, 900)
-    const horsePositions = [{ x: 380, y: 860 }, { x: 440, y: 870 }];
+    // Fix 5: 2 horses moved to east border (away from arena quadrant)
+    const horsePositions = [{ x: 920, y: 640 }, { x: 960, y: 680 }];
     horsePositions.forEach((pos, i) => {
       const key = `cf_horse_${(i % 2) + 1}`;
       if (!this.textures.exists(key)) return;
@@ -1811,6 +1792,7 @@ export class WorldScene extends Phaser.Scene {
   private async startCinematicArrival(_username: string) {
     this.introActive = true;
     this.inputEnabled = false;
+    this.game.events.emit('cutscene_started');
 
     const cam = this.cameras.main;
     const cameraZoom = cam.zoom; // base zoom from map property (2.5)
@@ -1923,9 +1905,13 @@ export class WorldScene extends Phaser.Scene {
 
     this.introActive = false;
     this.inputEnabled = true;
+    this.game.events.emit('cutscene_ended');
 
     // Emit world_ready
     this.game.events.emit('world_ready');
+
+    // Fix 2C: Show one-time controls hint for new players
+    this.showControlsHintOnce();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1960,6 +1946,7 @@ export class WorldScene extends Phaser.Scene {
     this.gatekeeperTriggered = true;
     this.inputEnabled = false;
     this.introActive = true;
+    this.game.events.emit('dialogue_started');
 
     const gk = this.gatekeeperSprite;
     const cfKey = 'cf_npc_Farmer_Bob';
@@ -2041,6 +2028,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.introActive = false;
     this.inputEnabled = true;
+    this.game.events.emit('dialogue_ended');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -2050,6 +2038,7 @@ export class WorldScene extends Phaser.Scene {
     lines: { speaker: string; text: string }[],
     _npcSprite: Phaser.GameObjects.Sprite | null,
   ): Promise<void> {
+    this.game.events.emit('dialogue_started');
     return new Promise(resolve => {
       const cam = this.cameras.main;
       const boxH = 80;
@@ -2083,11 +2072,21 @@ export class WorldScene extends Phaser.Scene {
         wordWrap: { width: boxW - 24 },
       }).setScrollFactor(0).setDepth(602);
 
-      // Advance hint
-      const advanceHint = this.add.text(boxX + boxW - 12, boxY + boxH - 10, '[ TAP TO CONTINUE ]', {
-        fontFamily: '"Press Start 2P", monospace', fontSize: '5px',
+      // Advance hint — pulsing ▼ TAP
+      const advanceHint = this.add.text(boxX + boxW - 12, boxY + boxH - 10, '\u25BC TAP', {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '6px',
         color: '#FFB800', resolution: 4,
       }).setOrigin(1, 1).setScrollFactor(0).setDepth(602).setAlpha(0);
+
+      // Pulse tween for hint (alpha 1 → 0.2 loop)
+      const pulseTween = this.tweens.add({
+        targets: advanceHint, alpha: { from: 1, to: 0.2 },
+        duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+        paused: true,
+      });
+
+      // Make entire dialogue box interactive tap target
+      bg.setInteractive({ useHandCursor: true });
 
       const allElements = [bg, borderTop, borderBot, borderLeft, borderRight, speakerText, dialogText, advanceHint];
 
@@ -2095,6 +2094,7 @@ export class WorldScene extends Phaser.Scene {
       const showLine = () => {
         if (lineIndex >= lines.length) {
           allElements.forEach(el => el.destroy());
+          this.game.events.emit('dialogue_ended');
           resolve();
           return;
         }
@@ -2125,17 +2125,21 @@ export class WorldScene extends Phaser.Scene {
             typeTimer.remove();
             dialogText.setText(line.text);
             charIndex = line.text.length;
-            advanceHint.setAlpha(0.6);
+            advanceHint.setAlpha(1);
+            pulseTween.resume();
             return;
           }
+          pulseTween.pause();
           this.input.keyboard!.removeKey('SPACE');
           this.input.off('pointerdown', advanceListener);
+          bg.off('pointerdown', advanceListener);
           lineIndex++;
           showLine();
         };
         const spaceKey = this.input.keyboard!.addKey('SPACE');
         spaceKey.on('down', advanceListener);
         this.input.on('pointerdown', advanceListener);
+        bg.on('pointerdown', advanceListener);
       };
 
       showLine();
@@ -2657,6 +2661,7 @@ export class WorldScene extends Phaser.Scene {
   private startIntroSequence(username: string) {
     this.introActive = true;
     this.inputEnabled = false;
+    this.game.events.emit('cutscene_started');
 
     const cameraZoom = this.cameras.main.zoom;
 
@@ -2697,6 +2702,7 @@ export class WorldScene extends Phaser.Scene {
           this.showGlowingPath();
           this.introActive = false;
           this.inputEnabled = true;
+          this.game.events.emit('cutscene_ended');
           // FIX 7: After intro, show world tour panning to castle
           this.time.delayedCall(2000, () => this.showWorldTour());
         });
@@ -2705,6 +2711,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private showTypewriterDialogue(lines: string[], onComplete: () => void) {
+    this.game.events.emit('dialogue_started');
     const cam = this.cameras.main;
     const boxH = 58;
     const boxW = cam.width;
@@ -2719,13 +2726,22 @@ export class WorldScene extends Phaser.Scene {
     this.dialogueText = this.add.text(16, boxY + 10, '', TEXT_STYLES.dialogue)
       .setScrollFactor(0).setDepth(602);
 
-    const advanceHint = this.add.text(boxW - 16, boxY + boxH - 8, '[SPACE]', {
-      fontSize: '4px',
+    const advanceHint = this.add.text(boxW - 16, boxY + boxH - 8, '\u25BC TAP', {
+      fontSize: '6px',
       fontFamily: '"Press Start 2P", monospace',
-      color: '#F39C12',
-      stroke: '#000000',
-      strokeThickness: 1,
+      color: '#FFB800',
+      resolution: 4,
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(602).setAlpha(0);
+
+    // Pulse tween for hint (alpha 1 → 0.2 loop)
+    const pulseTween = this.tweens.add({
+      targets: advanceHint, alpha: { from: 1, to: 0.2 },
+      duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      paused: true,
+    });
+
+    // Make entire dialogue box interactive tap target
+    bg.setInteractive({ useHandCursor: true });
 
     this.dialogueBox = this.add.container(0, 0, [bg, border, this.dialogueText, advanceHint])
       .setDepth(600);
@@ -2736,6 +2752,7 @@ export class WorldScene extends Phaser.Scene {
         this.dialogueBox?.destroy();
         this.dialogueBox = null;
         this.dialogueText = null;
+        this.game.events.emit('dialogue_ended');
         onComplete();
         return;
       }
@@ -2763,19 +2780,397 @@ export class WorldScene extends Phaser.Scene {
           typeTimer.remove();
           this.dialogueText!.setText(text);
           charIndex = text.length;
-          advanceHint.setAlpha(0.6);
+          advanceHint.setAlpha(1);
+          pulseTween.resume();
           return;
         }
+        pulseTween.pause();
         spaceKey.off('down', advanceListener);
         this.input.off('pointerdown', advanceListener);
+        bg.off('pointerdown', advanceListener);
         lineIndex++;
         showLine();
       };
       spaceKey.on('down', advanceListener);
       this.input.on('pointerdown', advanceListener);
+      bg.on('pointerdown', advanceListener);
     };
 
     showLine();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  FIX 2C — ONE-TIME CONTROLS HINT FOR NEW PLAYERS
+  // ═══════════════════════════════════════════════════════════
+  private showControlsHintOnce() {
+    if (typeof window !== 'undefined' && localStorage.getItem('midforge_controls_shown')) return;
+
+    this.inputEnabled = false;
+    const cam = this.cameras.main;
+    const R = 4;
+    const boxW = cam.width - 32;
+    const boxH = 120;
+    const boxX = cam.width / 2;
+    const boxY = cam.height / 2;
+
+    // Dark overlay
+    const overlay = this.add.rectangle(cam.width / 2, cam.height / 2, cam.width, cam.height, 0x000000, 0.7)
+      .setScrollFactor(0).setDepth(700);
+
+    // Box background
+    const bg = this.add.rectangle(boxX, boxY, boxW, boxH, 0x0D0D1A, 0.95)
+      .setScrollFactor(0).setDepth(701);
+
+    // Gold border
+    const border = this.add.graphics().setScrollFactor(0).setDepth(702);
+    border.lineStyle(2, 0xFFB800, 1);
+    border.strokeRect(boxX - boxW / 2, boxY - boxH / 2, boxW, boxH);
+
+    // Title
+    const title = this.add.text(boxX, boxY - boxH / 2 + 14, 'HOW TO PLAY', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '10px',
+      color: '#FFB800', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(703);
+
+    // Controls list
+    const isMobile = this.registry.get('isMobile') === true;
+    const lines = isMobile
+      ? [
+          'JOYSTICK — Move around',
+          'TAP NPC — Talk to characters',
+          'I BUTTON — Open inventory',
+          'TAP DIALOGUE — Advance text',
+        ]
+      : [
+          'WASD / ARROWS — Move around',
+          'E KEY — Talk to NPCs',
+          'I KEY — Open inventory',
+          'CLICK DIALOGUE — Advance text',
+        ];
+
+    let ly = boxY - boxH / 2 + 34;
+    const lineTexts: Phaser.GameObjects.Text[] = [];
+    for (const line of lines) {
+      const t = this.add.text(boxX, ly, line, {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '6px',
+        color: '#FFFFFF', resolution: R,
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(703);
+      lineTexts.push(t);
+      ly += 16;
+    }
+
+    // GOT IT button
+    const btnY = boxY + boxH / 2 - 18;
+    const btnBg = this.add.rectangle(boxX, btnY, 100, 22, 0xFFB800, 1)
+      .setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
+    const btnTxt = this.add.text(boxX, btnY, 'GOT IT', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '8px',
+      color: '#0D0D1A', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(704);
+
+    const allEls = [overlay, bg, border, title, ...lineTexts, btnBg, btnTxt];
+
+    const dismiss = () => {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('midforge_controls_shown', 'true');
+      }
+      this.tweens.add({
+        targets: allEls, alpha: 0, duration: 300,
+        onComplete: () => {
+          allEls.forEach(el => el.destroy());
+          this.inputEnabled = true;
+        },
+      });
+    };
+
+    btnBg.on('pointerdown', dismiss);
+    // Also dismiss on any key press
+    const dismissKey = this.input.keyboard!.addKey('SPACE');
+    dismissKey.once('down', dismiss);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  FIX 3 — PHASER BATTLE OVERLAY
+  // ═══════════════════════════════════════════════════════════
+  private static readonly ENCOUNTER_ENEMIES = ['orc', 'treant', 'slug', 'savageplant', 'fairy', 'slugmancer'];
+
+  private drawHpBar(gfx: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, pct: number, color: number) {
+    gfx.clear();
+    // Background
+    gfx.fillStyle(0x1a0a2e, 1);
+    gfx.fillRect(x, y, w, h);
+    // Fill
+    const fillColor = pct > 0.5 ? color : pct > 0.25 ? 0xF39C12 : 0xDD4444;
+    gfx.fillStyle(fillColor, 1);
+    gfx.fillRect(x, y, w * Math.max(0, pct), h);
+    // Border
+    gfx.lineStyle(1, 0xFFB800, 0.4);
+    gfx.strokeRect(x, y, w, h);
+  }
+
+  private shakeSprite(target: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite) {
+    const origX = target.x;
+    this.tweens.add({
+      targets: target,
+      x: origX - 4, duration: 40, yoyo: true, repeat: 3,
+      ease: 'Sine.easeInOut',
+      onComplete: () => { target.x = origX; },
+    });
+    // Flash white briefly
+    target.setTint(0xFFFFFF);
+    this.time.delayedCall(120, () => { target.clearTint(); });
+  }
+
+  public openBattle(enemyData: { name: string; tier: string; hp: number; maxHp: number; fightLog: any[]; playerWon: boolean; xpReward: number; goldReward: number }) {
+    if (this.battleOverlay) return;
+
+    this.inputEnabled = false;
+    this.game.events.emit('cutscene_started');
+
+    const cam = this.cameras.main;
+    const W = cam.width;
+    const H = cam.height;
+    const R = 4;
+
+    // Container for all battle elements
+    this.battleOverlay = this.add.container(0, 0).setDepth(1000).setScrollFactor(0);
+
+    // Solid dark background
+    const bg = this.add.rectangle(W / 2, H / 2, W, H, 0x0D0D1A, 1).setScrollFactor(0);
+    this.battleOverlay.add(bg);
+
+    // Ground line
+    const groundY = H * 0.55;
+    const ground = this.add.rectangle(W / 2, groundY, W, 2, 0x333355, 0.5).setScrollFactor(0);
+    this.battleOverlay.add(ground);
+
+    // Enemy sprite (left side)
+    const enemyX = W * 0.25;
+    const spriteY = H * 0.42;
+    const enemyKey = `encounter_${WorldScene.ENCOUNTER_ENEMIES[Math.floor(Math.random() * WorldScene.ENCOUNTER_ENEMIES.length)]}`;
+    if (this.textures.exists(enemyKey)) {
+      this.battleEnemySprite = this.add.image(enemyX, spriteY, enemyKey).setScale(3).setScrollFactor(0);
+      (this.battleEnemySprite as any).setTexture(enemyKey);
+    } else {
+      // Fallback: colored rectangle
+      this.battleEnemySprite = this.add.image(enemyX, spriteY, '__DEFAULT').setScrollFactor(0);
+      const fallback = this.add.rectangle(enemyX, spriteY, 48, 64, 0xDD4444, 1).setScrollFactor(0);
+      this.battleOverlay.add(fallback);
+    }
+    if (this.battleEnemySprite) this.battleOverlay.add(this.battleEnemySprite);
+
+    // Player sprite (right side, flipped)
+    const playerX = W * 0.75;
+    const cfPlayerKey = 'cf_player';
+    if (this.textures.exists(cfPlayerKey)) {
+      this.battlePlayerSprite = this.add.sprite(playerX, spriteY, cfPlayerKey, 0).setScale(3).setFlipX(true).setScrollFactor(0);
+    } else {
+      this.battlePlayerSprite = this.add.sprite(playerX, spriteY, '__DEFAULT', 0).setScrollFactor(0);
+      const fallback2 = this.add.rectangle(playerX, spriteY, 48, 64, 0x44DD88, 1).setScrollFactor(0);
+      this.battleOverlay.add(fallback2);
+    }
+    if (this.battlePlayerSprite) this.battleOverlay.add(this.battlePlayerSprite);
+
+    // Enemy name + HP bar
+    const enemyNameText = this.add.text(enemyX, spriteY - 60, enemyData.name.toUpperCase(), {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '6px', color: '#DD4444', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0);
+    this.battleOverlay.add(enemyNameText);
+
+    this.battleEnemyHpBar = this.add.graphics().setScrollFactor(0);
+    this.battleOverlay.add(this.battleEnemyHpBar);
+    this.battleEnemyHp = enemyData.maxHp;
+    this.battleEnemyMaxHp = enemyData.maxHp;
+    this.drawHpBar(this.battleEnemyHpBar, enemyX - 50, spriteY - 48, 100, 8, 1, 0xDD4444);
+
+    // Player name + HP bar
+    const playerNameText = this.add.text(playerX, spriteY - 60, 'YOU', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '6px', color: '#44DD88', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0);
+    this.battleOverlay.add(playerNameText);
+
+    this.battlePlayerHpBar = this.add.graphics().setScrollFactor(0);
+    this.battleOverlay.add(this.battlePlayerHpBar);
+    // Derive player max HP from fightLog
+    this.battlePlayerMaxHp = enemyData.fightLog.length > 0 ? enemyData.fightLog[0].cHp : 100;
+    this.battlePlayerHp = this.battlePlayerMaxHp;
+    this.drawHpBar(this.battlePlayerHpBar, playerX - 50, spriteY - 48, 100, 8, 1, 0x44DD88);
+
+    // VS text
+    const vsText = this.add.text(W / 2, spriteY - 20, 'VS', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '12px', color: '#FFB800', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setAlpha(0);
+    this.battleOverlay.add(vsText);
+
+    // Animate VS text in
+    this.tweens.add({ targets: vsText, alpha: 1, scale: 1.3, duration: 400, yoyo: true, ease: 'Back.easeOut' });
+
+    // Action buttons area
+    const btnY = H - 50;
+    const btnW = 110;
+    const btnH = 40;
+    const btnSpacing = 8;
+    const totalBtnW = btnW * 3 + btnSpacing * 2;
+    const btnStartX = (W - totalBtnW) / 2;
+
+    const buttons: { label: string; sub: string; color: number; }[] = [
+      { label: 'STRIKE', sub: '1x DMG', color: 0x4A90D9 },
+      { label: 'POWER', sub: '2x DMG', color: 0xE74C3C },
+      { label: 'BLOCK', sub: 'HEAL', color: 0x27AE60 },
+    ];
+
+    const btnElements: Phaser.GameObjects.GameObject[] = [];
+    buttons.forEach((btn, i) => {
+      const bx = btnStartX + i * (btnW + btnSpacing) + btnW / 2;
+      const btnBg = this.add.rectangle(bx, btnY, btnW, btnH, btn.color, 0.9)
+        .setScrollFactor(0).setInteractive({ useHandCursor: true });
+      const btnLabel = this.add.text(bx, btnY - 6, btn.label, {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '7px', color: '#FFFFFF', resolution: R,
+      }).setOrigin(0.5).setScrollFactor(0);
+      const btnSub = this.add.text(bx, btnY + 10, btn.sub, {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '4px', color: '#FFFFFF80', resolution: R,
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.battleOverlay!.add([btnBg, btnLabel, btnSub]);
+      btnElements.push(btnBg, btnLabel, btnSub);
+    });
+
+    // Animate fight log round by round
+    const fightLog = enemyData.fightLog;
+    let roundIdx = 0;
+    const roundText = this.add.text(W / 2, groundY + 16, '', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '5px', color: '#AAAAAA', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0);
+    this.battleOverlay.add(roundText);
+
+    const playRound = () => {
+      if (roundIdx >= fightLog.length) {
+        // Fight over — show result
+        this.time.delayedCall(600, () => this.showBattleResult(enemyData));
+        return;
+      }
+
+      const round = fightLog[roundIdx];
+      roundText.setText(`ROUND ${round.round}`);
+
+      // Update HP values
+      this.battleEnemyHp = round.dHp;
+      this.battlePlayerHp = round.cHp;
+
+      // Animate enemy taking damage
+      if (round.cDmg > 0 && this.battleEnemySprite) {
+        this.shakeSprite(this.battleEnemySprite);
+        // Floating damage
+        const dmgText = this.add.text(enemyX, spriteY - 70, `-${round.cDmg}`, {
+          fontFamily: '"Press Start 2P", monospace', fontSize: '8px', color: '#FF4444', resolution: R,
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.battleOverlay!.add(dmgText);
+        this.tweens.add({
+          targets: dmgText, y: spriteY - 100, alpha: 0, duration: 800,
+          onComplete: () => dmgText.destroy(),
+        });
+      }
+
+      // Animate player taking damage (delayed slightly)
+      this.time.delayedCall(400, () => {
+        if (round.dDmg > 0 && this.battlePlayerSprite) {
+          this.shakeSprite(this.battlePlayerSprite);
+          const dmgText2 = this.add.text(playerX, spriteY - 70, `-${round.dDmg}`, {
+            fontFamily: '"Press Start 2P", monospace', fontSize: '8px', color: '#FF4444', resolution: R,
+          }).setOrigin(0.5).setScrollFactor(0);
+          this.battleOverlay!.add(dmgText2);
+          this.tweens.add({
+            targets: dmgText2, y: spriteY - 100, alpha: 0, duration: 800,
+            onComplete: () => dmgText2.destroy(),
+          });
+        }
+
+        // Update HP bars
+        if (this.battleEnemyHpBar) {
+          this.drawHpBar(this.battleEnemyHpBar, enemyX - 50, spriteY - 48, 100, 8,
+            this.battleEnemyHp / this.battleEnemyMaxHp, 0xDD4444);
+        }
+        if (this.battlePlayerHpBar) {
+          this.drawHpBar(this.battlePlayerHpBar, playerX - 50, spriteY - 48, 100, 8,
+            this.battlePlayerHp / this.battlePlayerMaxHp, 0x44DD88);
+        }
+      });
+
+      roundIdx++;
+      this.time.delayedCall(1000, playRound);
+    };
+
+    // Disable buttons during auto-fight — they're visual only (fight is pre-calculated)
+    // Start fight after brief pause
+    this.time.delayedCall(1200, playRound);
+  }
+
+  private showBattleResult(enemyData: { playerWon: boolean; xpReward: number; goldReward: number; name: string }) {
+    if (!this.battleOverlay) return;
+
+    const cam = this.cameras.main;
+    const W = cam.width;
+    const H = cam.height;
+    const R = 4;
+
+    const resultColor = enemyData.playerWon ? '#44DD88' : '#DD4444';
+    const resultLabel = enemyData.playerWon ? 'VICTORY!' : 'DEFEATED';
+
+    const resultText = this.add.text(W / 2, H * 0.3, resultLabel, {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '16px', color: resultColor, resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0).setAlpha(0);
+    this.battleOverlay.add(resultText);
+
+    this.tweens.add({
+      targets: resultText, alpha: 1, scale: { from: 0.5, to: 1 },
+      duration: 500, ease: 'Back.easeOut',
+    });
+
+    // Rewards text
+    const rewardLines: string[] = [];
+    if (enemyData.xpReward > 0) rewardLines.push(`+${enemyData.xpReward} XP`);
+    if (enemyData.goldReward > 0) rewardLines.push(`+${enemyData.goldReward} GOLD`);
+
+    if (rewardLines.length > 0) {
+      const rewardText = this.add.text(W / 2, H * 0.3 + 30, rewardLines.join('  '), {
+        fontFamily: '"Press Start 2P", monospace', fontSize: '7px', color: '#FFB800', resolution: R,
+      }).setOrigin(0.5).setScrollFactor(0).setAlpha(0);
+      this.battleOverlay.add(rewardText);
+      this.tweens.add({ targets: rewardText, alpha: 1, duration: 400, delay: 400 });
+    }
+
+    // DONE button
+    const doneBtnY = H - 40;
+    const doneBg = this.add.rectangle(W / 2, doneBtnY, 140, 36, 0xFFB800, 1)
+      .setScrollFactor(0).setInteractive({ useHandCursor: true });
+    const doneTxt = this.add.text(W / 2, doneBtnY, 'CONTINUE', {
+      fontFamily: '"Press Start 2P", monospace', fontSize: '8px', color: '#0D0D1A', resolution: R,
+    }).setOrigin(0.5).setScrollFactor(0);
+    this.battleOverlay.add([doneBg, doneTxt]);
+
+    doneBg.on('pointerdown', () => this.closeBattle());
+    // Also allow SPACE to close
+    const spaceKey = this.input.keyboard!.addKey('SPACE');
+    spaceKey.once('down', () => this.closeBattle());
+  }
+
+  public closeBattle() {
+    if (!this.battleOverlay) return;
+
+    this.tweens.add({
+      targets: this.battleOverlay, alpha: 0, duration: 300,
+      onComplete: () => {
+        if (this.battleOverlay) {
+          this.battleOverlay.destroy(true);
+          this.battleOverlay = null;
+        }
+        this.battleEnemySprite = null;
+        this.battlePlayerSprite = null;
+        this.battleEnemyHpBar = null;
+        this.battlePlayerHpBar = null;
+        this.inputEnabled = true;
+        this.game.events.emit('cutscene_ended');
+      },
+    });
   }
 
   // ═══════════════════════════════════════════════════════════
